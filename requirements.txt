@@ -1,0 +1,7 @@
+pyautogui
+PyQt5
+pynput
+mss
+numpy
+interception
+psutil 
