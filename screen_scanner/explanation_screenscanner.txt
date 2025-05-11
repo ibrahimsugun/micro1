@@ -1,0 +1,293 @@
+# EKRAN TARAYICI: DETAYLI AÇIKLAMA
+
+## Genel Bakış
+
+Ekran Tarayıcı (Screen Scanner), belirli bir görüntüyü ekranda arayıp bulduğunda veya bulamadığında belirtilen klavye tuşlarına otomatik olarak basabilen bir otomasyon aracıdır. Bu program, tekrarlı görevleri otomatikleştirmek ve basit görsel tabanlı makro işlemleri gerçekleştirmek için tasarlanmıştır.
+
+Uygulama, Python programlama dili kullanılarak modüler bir yapıda geliştirilmiştir ve OpenCV kütüphanesi kullanılarak görüntü işleme kapasitesine sahiptir. PyQt5 tabanlı bir grafik arabirimi yerine, daha basit bir konsol arayüzüne sahiptir.
+
+## İşlevsel Özellikler
+
+1. **Ekran Tarama İşlevi**:
+   - Belirli bir görüntüyü (şablon) ekranda arama
+   - Belirli bir bölgeyi veya tüm ekranı tarama seçeneği
+   - Görüntü eşleştirme hassasiyetini ayarlama imkanı (threshold değeri)
+
+2. **Otomatik Klavye Kontrolü**:
+   - Görüntü bulunduğunda belirlenen tuşa basma
+   - Görüntü bulunamadığında farklı bir tuşa basma seçeneği
+   - Belirlenen zaman aralıklarıyla tuş basma işlemini tekrarlama
+
+3. **Profil ve Görev Yönetimi**:
+   - Birden fazla tarama işlemi (görev) tanımlama
+   - Görevleri kaydedip daha sonra yükleme
+   - Görevleri düzenleme ve silme imkanı
+
+4. **Veritabanı Desteği**:
+   - Tüm görevlerin SQLite veritabanında saklanması
+   - İşlem geçmişinin ve loglarının kaydedilmesi
+   - Varsayılan bir görevin otomatik oluşturulması
+
+## Program Akışı ve Mimarisi
+
+### 1. Başlangıç ve İlklendirme
+
+1. **Ana Başlangıç Noktası** (`main.py` içinde `main()` fonksiyonu):
+   - Uygulama başlatılır (`initialize_app()` fonksiyonu çağrılır)
+   - Gerekli klasörlerin varlığı kontrol edilir (data, images)
+   - Veritabanı başlatılır
+   - Varsayılan görev eklenir (eğer yoksa)
+   - Karşılama mesajı gösterilir
+   - Ana menü döngüsü başlatılır
+
+2. **Ana Menü ve Kullanıcı Etkileşimi**:
+   - Kullanıcıya menü seçenekleri sunulur:
+     * Yeni tarama başlat
+     * İşlem listesini göster
+     * Yeni işlem ekle
+     * İşlem düzenle
+     * İşlem sil
+     * Programı sonlandır
+   - Kullanıcı seçimine göre ilgili işlev çağrılır
+
+3. **Ekran Bölgesi Seçimi** (`ui.py` içinde `select_screen_region()` fonksiyonu):
+   - Kullanıcıdan taranacak ekran bölgesini seçmesi istenir
+   - Fare ile sol üst ve sağ alt köşe koordinatları belirlenir
+   - Seçilen bölge koordinatları (x1, y1, x2, y2) şeklinde döndürülür
+
+### 2. Tarama Süreci
+
+1. **Tarama Başlatma** (`scanner.py` içinde `run_scanner()` fonksiyonu):
+   - Seçilen görevin parametreleri alınır:
+     * Şablon görüntünün yolu
+     * Görüntü bulunduğunda basılacak tuş
+     * Görüntü bulunamadığında basılacak tuş
+     * Kontrol aralığı (saniye)
+     * Eşleşme eşiği (threshold)
+   - Tarama işlemi başlatılır ve loglanır
+
+2. **Görüntü Arama İşlemi** (`image_processor.py` içinde `find_image_on_screen()` fonksiyonu):
+   - Belirtilen ekran bölgesinin görüntüsü alınır
+   - Şablon görüntü (aranacak görüntü) yüklenir
+   - OpenCV'nin `matchTemplate` fonksiyonu ile görüntü eşleştirme yapılır
+   - Eşleşme eşiğini geçen bir sonuç bulunursa, konumu döndürülür
+
+3. **Tuş Basma İşlemi** (`keyboard_controller.py` içinde `press_key()` fonksiyonu):
+   - Görüntü bulunduğunda veya bulunamadığında ilgili tuşa basılır
+   - Bu işlem loglanır
+   - İşlemin sonucu ekrana yazdırılır
+
+4. **Taramayı Sonlandırma**:
+   - Kullanıcı 'q' tuşuna bastığında tarama sonlandırılır
+   - OpenCV pencereleri kapatılır
+   - İşlem loglanır
+
+### 3. Veritabanı İşlemleri
+
+1. **Veritabanı Başlatma** (`database.py` içinde `initialize_database()` fonksiyonu):
+   - SQLite veritabanı oluşturulur (yoksa)
+   - İki ana tablo oluşturulur:
+     * tasks: Tarama görevlerini içerir
+     * logs: İşlem loglarını içerir
+
+2. **Görev Yönetimi Fonksiyonları**:
+   - `add_task()`: Yeni bir tarama görevi ekler
+   - `get_all_tasks()`: Tüm görevleri listeler
+   - `get_task_by_id()`: ID'ye göre görev getirir
+   - `update_task()`: Görev bilgilerini günceller
+   - `delete_task()`: Görevi siler (pasif olarak işaretler)
+
+3. **Log Yönetimi** (`database.py` içinde `log_action()` fonksiyonu):
+   - Gerçekleştirilen işlemler veritabanına kaydedilir
+   - Her log kaydında şu bilgiler bulunur:
+     * İşlem ID'si
+     * Gerçekleştirilen eylem
+     * Zaman damgası
+     * Detay bilgileri
+
+## Modüler Yapı ve Bileşenler
+
+### 1. Ana Modüller
+
+1. **image_processor.py**:
+   - Ekran görüntüsü alma: `get_screen_region()`
+   - Görüntü eşleştirme: `find_image_on_screen()`
+   - Görüntüye dikdörtgen çizme: `draw_rectangle()`
+   - Görüntüyü ekranda gösterme: `display_image()`
+
+2. **keyboard_controller.py**:
+   - Tuşa basma: `press_key()`
+   - Tuş basılı mı kontrolü: `is_key_pressed()`
+   - Tuş basımını bekleme: `wait_for_key_press()`
+
+3. **database.py**:
+   - Veritabanı oluşturma: `initialize_database()`
+   - Görev yönetimi: `add_task()`, `update_task()`, `delete_task()`
+   - Görev sorguları: `get_all_tasks()`, `get_task_by_id()`
+   - Log işlemleri: `log_action()`
+
+4. **ui.py**:
+   - Kullanıcı arayüzü fonksiyonları
+   - Ekran bölgesi seçimi: `select_screen_region()`
+   - Menü gösterimi: `display_menu()`
+   - Görev bilgisi gösterimi: `print_task_info()`
+
+5. **scanner.py**:
+   - Ana tarama işlevi: `run_scanner()`
+   - Tarama döngüsü yönetimi
+   - Görüntü bulma ve tuş basma işlemlerinin koordinasyonu
+
+6. **config.py**:
+   - Program genelinde kullanılan sabit değerler
+   - Veritabanı yolu
+   - Varsayılan ayarlar (şablon yolu, tuşlar, kontrol aralığı, eşik değeri)
+
+### 2. Ana Veri Yapıları
+
+1. **Görev (Task) Yapısı**:
+   - `id`: Görev ID'si (veritabanında otomatik atanır)
+   - `name`: Görev adı
+   - `image_path`: Aranacak görüntünün dosya yolu
+   - `key_to_press`: Görüntü bulunduğunda basılacak tuş
+   - `key_when_not_found`: Görüntü bulunamadığında basılacak tuş (opsiyonel)
+   - `check_interval`: Kontrol aralığı (saniye)
+   - `threshold`: Eşleşme eşiği (0.0-1.0 arası)
+   - `created_at`: Oluşturulma zamanı
+   - `is_active`: Aktif/pasif durumu
+
+2. **Log Yapısı**:
+   - `id`: Log ID'si
+   - `task_id`: İlgili görevin ID'si
+   - `action`: Gerçekleştirilen eylem (scanner_start, key_press, image_found, vb.)
+   - `timestamp`: Zaman damgası
+   - `details`: Detay bilgileri
+
+## Görüntü İşleme Algoritması
+
+1. **Görüntü Eşleştirme Adımları**:
+   - Ekranın belirli bir bölgesinin görüntüsü alınır (PIL/ImageGrab kullanılarak)
+   - Görüntü OpenCV formatına dönüştürülür (RGB'den BGR'ye)
+   - Şablon görüntü (aranacak görüntü) OpenCV ile yüklenir
+   - `cv2.matchTemplate` fonksiyonu kullanılarak görüntü eşleştirme yapılır
+   - Eşleştirme yöntemi olarak `cv2.TM_CCOEFF_NORMED` kullanılır
+   - En yüksek eşleşme değeri (max_val) bulunur
+   - Bu değer belirlenen eşik değerini (threshold) geçerse, konumu döndürülür
+
+2. **Görüntü Eşleştirme Hassasiyeti**:
+   - Eşleşme eşiği (threshold) 0.0 ile 1.0 arasında bir değerdir
+   - 1.0'a yakın değerler daha hassas eşleştirme gerektirir (tamamen aynı görüntüler)
+   - 0.5-0.8 arası değerler genellikle makul bir eşleştirme sağlar
+   - Çok düşük değerler yanlış pozitiflere yol açabilir
+
+## Klavye Kontrolü
+
+1. **Tuş Basma İşlemi**:
+   - `keyboard` kütüphanesi kullanılarak gerçekleştirilir
+   - `press_and_release` fonksiyonu ile bir tuşa basılıp bırakılır
+   - Bu işlem veritabanına loglanır
+
+2. **Tuş Kontrolleri**:
+   - `is_key_pressed` fonksiyonu ile bir tuşun basılı olup olmadığı kontrol edilir
+   - `wait_for_key_press` fonksiyonu ile belirli bir tuşa basılması beklenebilir
+
+## Dosya Yapısı
+
+1. **Programın Ana Dosyaları**:
+   - `main.py`: Ana program ve menü döngüsü
+   - `scannscreen.py`: Basitleştirilmiş, bağımsız çalışabilen ekran tarayıcı
+
+2. **Modül Dosyaları** (modules/ klasöründe):
+   - `__init__.py`: Python paket tanımlama dosyası
+   - `config.py`: Konfigürasyon ayarları
+   - `database.py`: Veritabanı işlemleri
+   - `image_processor.py`: Görüntü işleme fonksiyonları
+   - `keyboard_controller.py`: Klavye kontrolü
+   - `scanner.py`: Tarama mantığı
+   - `ui.py`: Kullanıcı arayüzü fonksiyonları
+
+3. **Diğer Dosyalar ve Klasörler**:
+   - `data/`: Veritabanı ve log dosyaları için dizin
+   - `images/`: Aranacak şablon görüntüleri için dizin
+   - `requirements.txt`: Gerekli Python kütüphaneleri
+   - `README.md`: Proje hakkında genel bilgiler
+   - `Ekran_okuyucu_ve_karşılaştırıcı.txt`: Detaylı kullanım talimatları
+
+## Örnek Kullanım Senaryoları
+
+1. **Basit Otomasyon**:
+   - Bir web sayfasında belirli bir butonu (görselden tanıyarak) otomatik tıklama
+   - Bir programda belirli bir durumu (ekrandaki bir görseli) izleme ve buna göre tepki verme
+   - Tam ekran oyunlarda belirli görsel öğeleri algılama ve tuş basarak tepki verme
+
+2. **İleri Düzey Kullanım**:
+   - Birden fazla tarama görevi tanımlayarak karmaşık makrolar oluşturma
+   - Belirli sıralı işlemleri otomatikleştirme
+   - Farklı ekran bölgelerinde farklı görselleri arama ve farklı tuş kombinasyonları ile kontrol etme
+
+## Teknik Gereksinimler ve Kısıtlamalar
+
+1. **Kütüphane Gereksinimleri**:
+   - OpenCV: Görüntü işleme
+   - NumPy: Dizi işlemleri
+   - Pillow (PIL): Ekran görüntüsü alma
+   - PyAutoGUI: Fare kontrolü (bazı fonksiyonlarda)
+   - Keyboard: Klavye kontrolü
+   - SQLite3: Veritabanı işlemleri (Python standart kütüphanesinde)
+
+2. **Sistem Gereksinimleri**:
+   - Python 3.6 veya üzeri
+   - Windows, macOS veya Linux işletim sistemi
+   - Ekran görüntüsü almak için gerekli izinler
+
+3. **Kısıtlamalar**:
+   - Görüntü eşleştirme hassasiyeti ekran çözünürlüğüne ve görüntü kalitesine bağlıdır
+   - Ekrandaki küçük değişiklikler (renk tonu, boyut, açı) eşleştirmeyi etkileyebilir
+   - Yüksek yenileme hızlı taramalar CPU kullanımını artırabilir
+
+## Kurulum ve Çalıştırma
+
+1. **Kurulum Adımları**:
+   - Projeyi indirin veya klonlayın
+   - Gerekli bağımlılıkları yükleyin: `pip install -r requirements.txt`
+   - `data` ve `images` klasörlerinin varlığını kontrol edin (yoksa program oluşturacaktır)
+   - Bir test görüntüsü ekleyin (`images/test.gif` - varsayılan olarak aranır)
+
+2. **Programı Çalıştırma**:
+   - Ana programı çalıştırın: `python main.py`
+   - Veya basitleştirilmiş sürümü çalıştırın: `python scannscreen.py`
+
+3. **İlk Kullanım**:
+   - Program ilk çalıştırıldığında veritabanını oluşturur
+   - Varsayılan bir tarama görevi ekler
+   - Menüden bir işlem seçmeniz istenir
+
+## Geliştirme ve Özelleştirme
+
+Programı şu şekillerde genişletebilir ve özelleştirebilirsiniz:
+
+1. **Yeni Özellikler Ekleme**:
+   - Görüntü işleme algoritmalarını geliştirme (daha akıllı eşleştirme)
+   - Makro kayıt ve oynatma özelliği
+   - Zaman tabanlı görevler tanımlama
+
+2. **Arayüz Geliştirmeleri**:
+   - Grafiksel kullanıcı arayüzü (GUI) ekleme
+   - Görsel geri bildirim sistemi
+   - Şablon görüntüler için önizleme
+
+3. **Ek İşlevsellik**:
+   - Fare kontrolü ekleme (sadece klavye değil)
+   - OCR (Optik Karakter Tanıma) desteği
+   - Koşullu işlem zinciri tanımlama
+
+## Güvenlik ve Etik Kullanım
+
+1. **Güvenlik Notları**:
+   - Program klavye tuşlarını simüle ettiğinden dikkatli kullanılmalıdır
+   - Güvenlik açısından kritik uygulamalarda otomatik tuş basma işlemleri sakıncalı olabilir
+   - Yazılım kilitlenmelerinde 'q' tuşuna basarak programı sonlandırabilirsiniz
+
+2. **Etik Kullanım**:
+   - Programı başkalarının sistemlerinde izinsiz kullanmayın
+   - Çevrimiçi oyunlarda haksız avantaj sağlamak için kullanmayın
+   - Botlar veya otomatik işlemler kullanımının yasak olduğu platformlarda kullanmayın

@@ -1,0 +1,40 @@
+# KNIGHT ONLINE MAKRO TIKLAMALARI
+# Format: x,y,delay_ms,is_right_click(0=sol, 1=sağ)
+# x,y: Koordinatlar
+# delay_ms: Tıklama sonrası bekleme süresi (milisaniye)
+# is_right_click: 0=sol tık, 1=sağ tık
+
+# POTION VE SKILL TIKLAMA NOKTALARI
+# HP Pot (Kırmızı pot)
+800,450,300,0
+
+# MP Pot (Mavi pot)
+850,450,300,0
+
+# 1 numaralı skill 
+750,500,500,0
+
+# 2 numaralı skill
+800,500,500,0
+
+# 3 numaralı skill
+850,500,500,0
+
+# 4 numaralı skill
+900,500,1500,0
+
+# ITEM TOPLAMA KOMUTLARI
+# Z tuşu (hedef seçme)
+900,450,200,0
+
+# X tuşu (item toplama)
+950,450,200,0
+
+# Ekranın ortası (savaş alanı)
+960,540,100,0
+
+# Hedef seçme (Tab)
+1000,500,100,0
+
+# Otomatik saldırı (Tab sonrası)
+1050,500,2000,0 

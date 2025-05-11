@@ -1,0 +1,491 @@
+# FARE TIKLAMA KAYIT VE OYNATMA SİSTEMİ REHBERİ
+
+Bu doküman, Fare Kaydedici (Mouse Recorder) uygulamasının tıklama kaydetme ve oynatma algoritması hakkında detaylı bilgi vermektedir. Sistemin diğer projelere entegre edilmesi veya benzer işlevselliğin oluşturulması için gereken tüm bilgileri içerir.
+
+## İÇİNDEKİLER
+
+1. Genel Mimari
+2. Tıklama Kayıt Algoritması
+3. Tıklama Oynatma Algoritması
+4. Tıklama Veri Yapıları
+5. Gecikme Hesaplama Yöntemi
+6. Entegrasyon İçin Gerekli Bileşenler
+7. Win32API İle Tıklama Yapma
+8. Profil Yönetimi ve Veri Saklama
+9. Çoklu İş Parçacığı Kullanımı
+10. Hata Kontrolü ve Güvenlik
+
+---
+
+## 1. GENEL MİMARİ
+
+Fare Kaydedici uygulaması şu ana bileşenlerden oluşur:
+
+- **MouseListener**: Fare tıklamalarını dinleyen ve sinyal yayınlayan sınıf
+- **ClickAction**: Tıklama bilgilerini ve gecikmelerini tutan veri sınıfı
+- **PointRecorderApp**: Ana uygulama sınıfı, kullanıcı arayüzü ve tıklama yönetimi
+
+Uygulama, fare tıklamalarını gerçek zamanlı olarak dinleyerek kullanıcının tıklamalarını koordinatları, tıklama türü (sağ/sol) ve tıklamalar arasındaki gecikme süreleriyle birlikte kaydeder. Daha sonra bu tıklamaları aynı ritim ve düzenle tekrar oynatabilir.
+
+---
+
+## 2. TIKLAMA KAYIT ALGORİTMASI
+
+Tıklama kayıt algoritması şu şekilde çalışır:
+
+1. `MouseListener` sınıfı ayrı bir iş parçacığında çalışarak fare tıklamalarını izler
+2. Her tıklama için mevcut zaman (timestamp) kaydedilir
+3. Bir tıklama algılandığında, türü (sağ/sol) ve ekran koordinatları kaydedilir
+4. Eğer daha önce bir tıklama yapılmışsa, iki tıklama arasındaki gecikme hesaplanır
+5. Her tıklama için `ClickAction` nesnesi oluşturulur ve `click_actions` listesine eklenir
+
+### Kod Parçası: MouseListener Sınıfı
+
+```python
+class MouseListener(QObject):
+    """
+    Fare tıklamalarını dinleyen ve sinyaller yayınlayan sınıf
+    """
+    left_click = pyqtSignal(int, int)
+    right_click = pyqtSignal(int, int)
+    
+    def __init__(self):
+        super().__init__()
+        self.is_listening = False
+        self.thread = None
+    
+    def start_listening(self):
+        """
+        Fare dinlemeyi başlatır
+        """
+        if self.is_listening:
+            return
+            
+        self.is_listening = True
+        self.thread = threading.Thread(target=self._listen_mouse, daemon=True)
+        self.thread.start()
+        print("Fare dinleme başladı")
+    
+    def _listen_mouse(self):
+        """
+        Fare tıklamalarını dinleyen ana döngü
+        """
+        # Sol ve sağ fare tuşları durumları
+        left_button_state = False
+        right_button_state = False
+        
+        while self.is_listening:
+            try:
+                # Sol fare tuşu kontrolü
+                if win32api.GetAsyncKeyState(win32con.VK_LBUTTON) < 0:
+                    if not left_button_state:
+                        x, y = win32api.GetCursorPos()
+                        print(f"Sol tıklama algılandı: X:{x}, Y:{y}")
+                        self.left_click.emit(x, y)
+                        left_button_state = True
+                else:
+                    left_button_state = False
+                
+                # Sağ fare tuşu kontrolü
+                if win32api.GetAsyncKeyState(win32con.VK_RBUTTON) < 0:
+                    if not right_button_state:
+                        x, y = win32api.GetCursorPos()
+                        print(f"Sağ tıklama algılandı: X:{x}, Y:{y}")
+                        self.right_click.emit(x, y)
+                        right_button_state = True
+                else:
+                    right_button_state = False
+                
+                # Çok hızlı CPU kullanımını önlemek için kısa bekleme
+                time.sleep(0.05)
+                
+            except Exception as e:
+                print(f"Fare dinleme hatası: {e}")
+                time.sleep(0.5)  # Hata durumunda daha uzun bekle
+```
+
+### Kod Parçası: Tıklama Kaydetme İşlevi
+
+```python
+def on_left_click(self, x, y):
+    """
+    Sol tıklama yakalandığında çağrılır
+    """
+    if self.is_recording:
+        # Zaman damgası oluştur
+        current_time = datetime.datetime.now()
+        
+        # Eğer daha önce bir tıklama varsa, aradaki gecikmeyi hesapla
+        delay_after = 0
+        if self.last_click_time:
+            delay_after = int((current_time - self.last_click_time).total_seconds() * 1000)
+        
+        # Son tıklama zamanını güncelle
+        self.last_click_time = current_time
+        
+        # Eğer bu ilk tıklama değilse, önceki tıklamanın gecikme süresini ayarla
+        if len(self.click_actions) > 0:
+            self.click_actions[-1].delay_after = delay_after
+            # Liste görünümünü güncelle
+            self.update_click_list()
+        
+        # Yeni tıklamayı kaydet
+        click_action = ClickAction(x, y, is_right_click=False, timestamp=current_time)
+        self.click_actions.append(click_action)
+        print(f"Sol tıklama kaydedildi: X:{x}, Y:{y}, Önceki tıklamadan gecikme: {delay_after}ms")
+        
+        self.update_click_list()
+        self.update_status()
+```
+
+---
+
+## 3. TIKLAMA OYNATMA ALGORİTMASI
+
+Tıklama oynatma algoritması şu şekilde çalışır:
+
+1. `play_actions` metodu ayrı bir iş parçacığında çalıştırılır
+2. `click_actions` listesindeki tüm tıklamalar sırayla işlenir
+3. Her tıklama için ekran koordinatlarına gidilir ve tıklama türüne göre sağ/sol tıklama gerçekleştirilir
+4. Tıklamalar arasında, kaydedilen süre kadar veya sabit bir süre (250ms) beklenir
+5. "Sürekli tekrarla" seçeneği işaretliyse tüm liste tekrar tekrar oynatılır
+
+### Kod Parçası: Tıklama Oynatma İşlevi
+
+```python
+def play_actions(self):
+    """
+    Kaydedilen tıklamaları oynatır
+    """
+    try:
+        # Tekrarlı veya tek seferlik oynatma
+        do_repeat = self.repeat_playback
+        
+        while self.is_playing:
+            for i, action in enumerate(self.click_actions):
+                if not self.is_playing:
+                    break
+                
+                try:
+                    print(f"Tıklama {i+1} yapılıyor: {'Sağ' if action.is_right_click else 'Sol'} tıklama ({action.x}, {action.y})")
+                    
+                    # Tıklama tipine göre fonksiyon seç
+                    if action.is_right_click:
+                        success = rightclick(action.x, action.y)
+                    else:
+                        success = leftclick(action.x, action.y)
+                    
+                    if not success:
+                        print(f"Tıklama {i+1} başarısız oldu")
+                    
+                    # İşlemler arası bekleme - ya kaydedilen gecikme ya da sabit değer
+                    if self.use_recorded_delays and i < len(self.click_actions) - 1:
+                        delay = action.delay_after
+                        if delay > 0:
+                            print(f"Kaydedilen gecikme: {delay}ms bekleniyor")
+                            time.sleep(delay / 1000.0)  # ms'yi saniyeye çevir
+                        else:
+                            # Eğer gecikme 0 ise minimum bekleme yap
+                            time.sleep(0.05)
+                    else:
+                        # Sabit gecikme kullan
+                        time.sleep(0.25)  # 250ms
+                except Exception as e:
+                    print(f"Tıklama {i+1} hatası: {e}")
+            
+            # Tekrarlama seçeneği kontrol edilir
+            if not do_repeat:
+                print("Tek seferlik oynatma tamamlandı")
+                self.is_playing = False
+                # Ana thread'de durum güncelleme
+                try:
+                    QApplication.instance().postEvent(self, StatusUpdateEvent())
+                except Exception as e:
+                    print(f"Durum güncelleme hatası: {e}")
+                break
+            
+            # Tekrarlama durumunda bir sonraki döngüye geçmeden önce biraz bekle
+            time.sleep(0.5)
+            
+    except Exception as e:
+        print(f"Oynatma hatası: {e}")
+        self.is_playing = False
+```
+
+---
+
+## 4. TIKLAMA VERİ YAPILARI
+
+`ClickAction` sınıfı, her bir fare tıklamasının bilgilerini tutar:
+
+### Kod Parçası: ClickAction Sınıfı
+
+```python
+class ClickAction:
+    """
+    Bir fare tıklamasını temsil eden sınıf
+    """
+    def __init__(self, x, y, is_right_click=False, timestamp=None, delay_after=0):
+        self.x = x
+        self.y = y
+        self.is_right_click = is_right_click  # True=Sağ tıklama, False=Sol tıklama
+        self.timestamp = timestamp or datetime.datetime.now()
+        self.delay_after = delay_after  # Bu tıklamadan sonraki bekleme süresi (ms)
+    
+    def __str__(self):
+        click_type = "Sağ Tık" if self.is_right_click else "Sol Tık"
+        delay_info = f"Gecikme: {self.delay_after}ms" if self.delay_after > 0 else ""
+        return f"{click_type} - X:{self.x}, Y:{self.y} - {self.timestamp.strftime('%H:%M:%S.%f')[:-3]} {delay_info}"
+```
+
+Bu veri yapısı şu bilgileri tutar:
+- **x, y**: Tıklamanın ekran koordinatları
+- **is_right_click**: Tıklama türü (true: sağ tıklama, false: sol tıklama)
+- **timestamp**: Tıklamanın gerçekleştiği kesin zaman
+- **delay_after**: Bu tıklamadan sonraki tıklamaya kadar beklenecek süre (ms cinsinden)
+
+---
+
+## 5. GECİKME HESAPLAMA YÖNTEMİ
+
+Tıklamalar arasındaki gecikme şu şekilde hesaplanır:
+
+1. Her tıklama için kesin zaman (timestamp) kaydedilir
+2. Bir sonraki tıklama gerçekleştiğinde, iki zaman arasındaki fark milisaniye cinsinden hesaplanır
+3. Hesaplanan fark, önceki tıklamanın `delay_after` özelliğine atanır
+4. Oynatma sırasında, her tıklamadan sonra ilgili `delay_after` süresi kadar beklenir
+
+```python
+# Gecikme hesaplama
+delay_after = int((current_time - self.last_click_time).total_seconds() * 1000)
+
+# Bekleme uygulama
+time.sleep(delay / 1000.0)  # ms'yi saniyeye çevir
+```
+
+---
+
+## 6. ENTEGRASYON İÇİN GEREKLİ BİLEŞENLER
+
+Fare tıklama kaydı ve oynatma sistemini başka bir projeye entegre etmek için ihtiyaç duyulan minimum bileşenler:
+
+1. **Win32API** ve **win32con** modülleri - fare olaylarını izlemek ve tıklama yapmak için
+2. **threading** modülü - arka planda fare izleme ve oynatma için
+3. **datetime** modülü - tıklamalar arasındaki zamanlama hesabı için
+4. **time** modülü - gecikmeler ve beklemeler için
+
+### Minimum gereksinimler:
+
+```python
+import time
+import threading
+import datetime
+import win32api
+import win32con
+```
+
+---
+
+## 7. WIN32API İLE TIKLAMA YAPMA
+
+Fare tıklamaları, Windows sistemlerde win32api kullanılarak simüle edilir:
+
+### Kod Parçası: Sağ ve Sol Tıklama Fonksiyonları
+
+```python
+def rightclick(x, y):
+    """
+    win32api kullanarak sağ tıklama yapar
+    """
+    try:
+        # Fare imlecini konumlandır
+        win32api.SetCursorPos((x, y))
+        # Kısa bekleme
+        time.sleep(0.05)
+        # Sağ tuşa basma olayı
+        win32api.mouse_event(win32con.MOUSEEVENTF_RIGHTDOWN, x, y, 0, 0)
+        # Basma ve bırakma arasında bekleme
+        time.sleep(0.1)
+        # Sağ tuşu bırakma olayı
+        win32api.mouse_event(win32con.MOUSEEVENTF_RIGHTUP, x, y, 0, 0)
+        print(f"Sağ tıklama yapıldı: X:{x}, Y:{y}")
+        return True
+    except Exception as e:
+        print(f"Sağ tıklama hatası: {e}")
+        return False
+
+def leftclick(x, y):
+    """
+    win32api kullanarak sol tıklama yapar
+    """
+    try:
+        # Fare imlecini konumlandır
+        win32api.SetCursorPos((x, y))
+        # Kısa bekleme
+        time.sleep(0.05)
+        # Sol tuşa basma olayı
+        win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN, x, y, 0, 0)
+        # Basma ve bırakma arasında bekleme
+        time.sleep(0.1)
+        # Sol tuşu bırakma olayı
+        win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, x, y, 0, 0)
+        print(f"Sol tıklama yapıldı: X:{x}, Y:{y}")
+        return True
+    except Exception as e:
+        print(f"Sol tıklama hatası: {e}")
+        return False
+```
+
+Bu fonksiyonlar şu adımları gerçekleştirir:
+1. İmleci hedef koordinata taşıma
+2. Fare tuşuna basma
+3. Kısa bir bekleme (gerçekçi tıklama simülasyonu için)
+4. Fare tuşunu bırakma
+
+---
+
+## 8. PROFİL YÖNETİMİ VE VERİ SAKLAMA
+
+Tıklama verileri ve profiller, INI dosyasında JSON formatında saklanır:
+
+### Kod Parçası: JSON Dönüşüm Fonksiyonları
+
+```python
+def click_action_to_dict(action):
+    """
+    ClickAction nesnesini sözlük yapısına dönüştürür
+    """
+    return {
+        'x': action.x,
+        'y': action.y,
+        'is_right_click': action.is_right_click,
+        'timestamp': action.timestamp.isoformat(),
+        'delay_after': action.delay_after
+    }
+
+def dict_to_click_action(data):
+    """
+    Sözlük yapısından ClickAction nesnesi oluşturur
+    """
+    return ClickAction(
+        x=data['x'],
+        y=data['y'],
+        is_right_click=data['is_right_click'],
+        timestamp=datetime.datetime.fromisoformat(data['timestamp']),
+        delay_after=data['delay_after']
+    )
+```
+
+### Kod Parçası: Ayarları Kaydetme
+
+```python
+def save_settings(self, profile_name=None):
+    """
+    Tıklama verilerini ve ayarları INI dosyasına kaydeder
+    """
+    try:
+        config = configparser.ConfigParser()
+        
+        # Mevcut INI dosyasını oku (varsa)
+        if os.path.exists(CONFIG_FILE):
+            config.read(CONFIG_FILE)
+            
+        # Profil adını ayarla
+        if profile_name:
+            self.current_profile_name = profile_name
+            
+        # Genel ayarlar bölümü
+        if 'Settings' not in config:
+            config['Settings'] = {}
+            
+        # Son kullanılan profil adını kaydet
+        config['Settings']['last_profile'] = self.current_profile_name
+        
+        # Profil bölümü
+        section_name = f"Profile_{self.current_profile_name}"
+        if section_name not in config:
+            config[section_name] = {}
+            
+        # Tıklama verilerini JSON formatına dönüştür
+        click_data = [click_action_to_dict(action) for action in self.click_actions]
+        config[section_name]['click_data'] = json.dumps(click_data)
+        
+        # Tekrar ayarını kaydet
+        config[section_name]['repeat'] = str(int(self.repeat_playback))
+        
+        # Gecikme kullanım ayarını kaydet
+        config[section_name]['use_delays'] = str(int(self.use_recorded_delays))
+        
+        # Dosyaya kaydet
+        with open(CONFIG_FILE, 'w') as configfile:
+            config.write(configfile)
+            
+        print(f"Ayarlar '{CONFIG_FILE}' dosyasına kaydedildi. Profil: {self.current_profile_name}")
+        return True
+        
+    except Exception as e:
+        print(f"Ayarlar kaydedilirken hata oluştu: {e}")
+        return False
+```
+
+---
+
+## 9. ÇOKLU İŞ PARÇACIĞI KULLANIMI
+
+Fare dinleme ve tıklama oynatma işlemleri ayrı iş parçacıklarında çalışır. Bu, kullanıcı arayüzünün donmasını önler:
+
+```python
+# Fare dinleme thread'i
+self.thread = threading.Thread(target=self._listen_mouse, daemon=True)
+self.thread.start()
+
+# Oynatma thread'i
+self.playback_thread = threading.Thread(target=self.play_actions, daemon=True)
+self.playback_thread.start()
+```
+
+Dikkat edilmesi gereken önemli nokta, `daemon=True` parametresi ile iş parçacıklarının ana uygulama kapandığında otomatik olarak sonlandırılmasının sağlanmasıdır.
+
+---
+
+## 10. HATA KONTROLÜ VE GÜVENLİK
+
+1. **Fare işlemlerinde hata yakalama**: Tüm fare işlemleri try-except blokları içinde yapılır
+2. **Thread güvenliği**: İş parçacıkları kontrollü bir şekilde başlatılır ve durdurulur
+3. **Pyautogui Failsafe**: Varsayılan olarak devre dışı bırakılmıştır (güvenlik riski oluşturabilir)
+
+```python
+# İş parçacığını güvenli bir şekilde durdurma
+def stop_listening(self):
+    """
+    Fare dinlemeyi durdurur
+    """
+    self.is_listening = False
+    if self.thread and self.thread.is_alive():
+        self.thread.join(1.0)  # En fazla 1 saniye bekle
+    print("Fare dinleme durduruldu")
+```
+
+---
+
+## ENTEGRASYON KILAVUZU
+
+Başka bir uygulamaya fare tıklama kaydı ve oynatma özelliğini entegre etmek için gereken adımlar:
+
+1. **MouseListener sınıfını ekle**: Fare olaylarını dinlemek için
+2. **ClickAction sınıfını ekle**: Tıklama verilerini saklamak için
+3. **Tıklama fonksiyonlarını ekle**: rightclick() ve leftclick()
+4. **Gecikme hesaplama ve uygulama mantığını ekle**: Kullanıcı tarafından yapılan tıklamalar arasındaki süreyi hesapla
+
+Tipik bir akış şu şekildedir:
+
+1. Kullanıcı "Kayıt" butonuna tıklar
+2. Fare dinleme başlar (ayrı bir iş parçacığında)
+3. Fare tıklamaları kaydedilir ve zamanları hesaplanır
+4. Kullanıcı "Kaydet" butonuna tıklar
+5. Kayıt durdurulur ve veriler saklanır
+6. Kullanıcı "Oynat" butonuna tıklar
+7. Tıklamalar ayrı bir iş parçacığında oynatılır
+8. Oynatma tamamlandığında durum güncellenir
+
+Bu akış, herhangi bir uygulamaya özelleştirilerek entegre edilebilir. 

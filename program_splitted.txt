@@ -1,0 +1,504 @@
+# KNIGHT ONLINE MAKRO PROGRAMI ANALIZI - BOLUM 1
+
+## 1. DOSYA ILISKILERI
+
+### 1.1. Dosya Yapisi ve Bagimliliklar
+
+Program asagidaki dosyalardan olusmaktadir:
+
+1. **combined.py**: Ana program dosyasi, kullanici arayuzu ve temel mantigi icerir
+2. **stroke.py**: Klavye ve fare hareketlerini temsil eden siniflari icerir
+3. **consts.py**: Sabit degerler ve enum degerlerini icerir
+4. **interception.py**: Klavye ve fare hareketlerini yakalamak ve simule etmek icin kullanilan driver ile iletisim kuran modul
+5. **combined.spec**: PyInstaller ile calistirilabilir dosya olusturmak icin kullanilan yapilandirma dosyasi
+6. **requirements.txt**: Programin bagimlilarini listeleyen dosya
+
+Dosya bagimliliklari su sekildedir:
+
+- **combined.py** -> **interception.py**, **consts.py** (dolayli olarak **stroke.py** de kullanir)
+- **interception.py** -> **stroke.py**, **consts.py**
+- **stroke.py** -> Bagimsiz (sadece Python standart kutuphanelerini kullanir)
+- **consts.py** -> Bagimsiz (sadece Python standart kutuphanelerini kullanir)
+
+### 1.2. Modul Islevleri
+
+#### 1.2.1. combined.py
+- Ana program akisini ve mantigini icerir
+- PyQt5 kullanarak kullanici arayuzunu olusturur
+- Oyun icinde HP/MP takibi, tus makrolari, hedef tespiti ve MagicHammer ozelliklerini yonetir
+- Ayarlari kaydedip yukler
+
+#### 1.2.2. stroke.py
+- Klavye ve fare hareketleri icin veri yapilarini tanimlar
+- Iki temel sinif icerir:
+  - `key_stroke`: Klavye tuslari icin veri yapisi
+  - `mouse_stroke`: Fare hareketleri icin veri yapisi
+- Ikili (binary) veri formatlama islemleri (struct moduluyle) gerceklestirir
+
+#### 1.2.3. consts.py
+- Klavye ve fare durumlarini temsil eden sabit degerleri (enum) tanimlar
+- interception surucusu ile iletisim icin gereken durum kodlarini icerir
+
+#### 1.2.4. interception.py
+- Klavye ve fare hareketlerini dusuk seviyede kontrol eden interception surucusu ile iletisim kurar
+- Windows API cagrilari yapmak icin ctypes kullanir
+- Cihaz tanimlama, tus gonderme/alma islevleri saglar
+
+## 2. PROGRAM AKIS SEMASI
+
+### 2.1. Baslangic
+
+1. **combined.py** yuklendiginde:
+   - MainWindow sinifinin bir ornegi olusturulur
+   - Interception surucusu baslatilir (interception.py)
+   - Kullanici arayuzu olusturulur
+   - Klavye dinleyici thread baslatilir
+
+2. **Ana Pencere Olusturma**:
+   - Butonlar, onay kutulari, giris alanlari olusturulur
+   - Yapilandirma dosyasi varsa yuklenir
+   - Rastgele bir pencere basligi olusturulur (tespit edilmeyi onlemek icin)
+
+### 2.2. Kullanici Etkileşimi Akisi
+
+1. **Konum Belirleme Süreci**:
+   - Kullanici "HP/MP Koordinatlarini Al" butonuna tiklar
+   - Program `target_job` degiskenini ilgili islem icin ayarlar
+   - Kullanici fare ile ilgili konumu secer ve CTRL tusuna basar
+   - `key_listener` CTRL tusunu algilar ve konum kaydedilir
+
+2. **Kısayol Tusu Belirleme Süreci**:
+   - Kullanici kısayol belirlemek istedigi butona tiklar
+   - Program `target_job` degiskenini ayarlar
+   - Kullanici bir tusa basar
+   - `key_listener` tusu algilari ve kısayol olarak kaydeder
+
+3. **Makro Baslatma/Durdurma**:
+   - Kullanici Baslat/Durdur kısayoluna basar
+   - `start_stop()` fonksiyonu cagrilir
+   - Aktif ozelliklere gore ilgili thread'ler baslatilir/durdurulur
+
+### 2.3. Thread Yonetimi
+
+Program ceshitli görevleri yerine getirmek icin su thread'leri kullanir:
+
+1. **Klavye Dinleyici** (`key_listener`): Tuş basislari dinler
+2. **Heal/Mana Helper** (`heal_mana_helper`): HP/MP barlarini kontrol eder
+3. **Hedef Tespiti** (`target_detection_helper`): Hedef cubugunu kontrol eder
+4. **Makro** (`Makro`): Belirlenen tuslara sırayla basar
+5. **MagicHammer** (`magic_hammer_helper`): Belirli bir rengi algilari ve tusa basar
+
+### 2.4. Programin Sonlandirilmasi
+
+- Kullanici uygulamayi kapattiginda `app.exec_()` sona erer
+- `os._exit(0)` cagrilariyla tum thread'ler sonlandirilir
+
+## 3. TEMEL ISLEVLER
+
+### 3.1. Ekran Görüntüsü Alma ve Analiz Etme
+
+Program, `mss` kütüphanesini kullanarak ekranin belirli bölgelerinin görüntüsünü alir. Bu görüntüler genellikle su amaclarla kullanilir:
+
+1. **HP/MP Seviyesi Kontrolü**:
+   ```python
+   def heal_mana_helper(self):
+       # ...
+       while self.working and (self.oto_heal or self.oto_mana):
+           self.take_screenshot(region, target=0)
+           if self.oto_heal:
+               rgb = self.heal_and_mana_screenshot[self.heal_locate[1], self.heal_locate[0]]
+               if rgb[0] <= self.heal_min and rgb[1] <= self.heal_min and rgb[2] <= self.heal_min:
+                   # HP düşük, tusa bas
+   ```
+
+2. **Hedef Tespiti**:
+   ```python
+   def check_target(self):
+       img = self.take_target_screenshot()
+       # ...
+       red_mask = (
+           (img[:, :, 0] < 100) &  # Düşük mavi
+           (img[:, :, 1] < 100) &  # Düşük yeşil
+           (img[:, :, 2] > 150)    # Yüksek kırmızı
+       )
+       # Kırmızı piksel sayısı kontrolü
+   ```
+
+3. **MagicHammer Renk Kontrolü**:
+   ```python
+   def magic_hammer_helper(self):
+       # ...
+       while self.working and self.magic_hammer_active and self.magic_hammer_detection:
+           # Belirtilen konumdaki pikselin rengini al
+           # Hedef renk #AC3335 ile karşılaştır
+   ```
+
+Algoritma su sekilde çalışır:
+1. Belirlenen ekran koordinatlarindan piksel(ler) alinir
+2. Alinan piksellerin RGB degerleri analiz edilir
+3. Renk degerleri belirli kosulları karşıladığında (eşik degerlerinin altında/üstünde) uygun eylemler tetiklenir
+
+### 3.2. Tus Basma Mekanizması
+
+Programin en temel islevlerinden biri, oyun icinde tuslara otomatik olarak basabilmektir. Bu ozellik, Interception surucusu aracilığıyla gerçekleştirilir.
+
+#### 3.2.1. Tusa Basma Islevi
+
+`tusbas()` fonksiyonu su adımları izler:
+
+```python
+def tusbas(self, key, gecikme):
+    # Tusa basma (key down) islemi
+    interception_press = key_stroke(key, interception_key_state.INTERCEPTION_KEY_DOWN.value, 0)
+    self.driver.send(self.keyboard, interception_press)
+    
+    # Tusu basılı tutma süresi
+    time.sleep(gecikme)
+    
+    # Tusu bırakma (key up) islemi
+    interception_press.state = interception_key_state.INTERCEPTION_KEY_UP.value
+    self.driver.send(self.keyboard, interception_press)
+    
+    # Iki tus basma arasında minimum bekleme süresi
+    time.sleep(0.01)  # 10ms
+```
+
+Bu işlev:
+1. `stroke.py` moduluyle `key_stroke` sinifini kullanarak bir tus basma olayı olusturur
+2. Interception surucusu aracilığıyla tusa basma olayını gonderir
+3. Belirtilen süre kadar bekler (tus basılı tutma süresi)
+4. Tusu bırakma olayını gonderir
+5. Güvenli bir islem icin kısa bir süre daha bekler
+
+#### 3.2.2. Tus Kodları
+
+Tus kodları, klavye tuslarının donanım seviyesindeki temsilcileridir:
+
+```python
+self.keycodes = {
+    "F1": 0x3B, "F2": 0x3C, "F3": 0x3D, "F4": 0x3E, "F5": 0x3F,
+    "F6": 0x40, "F7": 0x41, "F8": 0x42, "F9": 0x43, "F10": 0x44,
+    # ... diğer tuslar
+    "Z": 0x2C
+}
+```
+
+### 3.3. Interception Surucusu Kullanımı
+
+Interception, donanım seviyesinde klavye ve fare olaylarını yakalamak ve simule etmek icin kullanılan bir surucudur. Bu program, interception.py modulu üzerinden bu surucu ile iletisim kurar.
+
+#### 3.3.1. Surucu Baslatma
+
+```python
+try:
+    self.driver = interception()
+    for i in range(MAX_DEVICES):
+        if interception.is_keyboard(i):
+            self.keyboard = i
+            print(f"Keyboard found: {i}")
+            break
+    if self.keyboard == None:
+        print("Keyboard not found.")
+except Exception as e:
+    print(f"Interception surucusu yüklenirken hata: {e}")
+```
+
+Bu kod parçası:
+1. Interception surucusu baslatır
+2. Bağlı cihazlar arasında bir klavye arar
+3. İlk bulunan klavyeyi `self.keyboard` olarak kaydeder
+
+#### 3.3.2. Interception Sinif Yapısı
+
+`interception.py` dosyasındaki temel sinif yapısı şöyledir:
+
+- **interception**: Ana surucu arayüzü
+  - `wait()`: Cihaz olaylarını bekler
+  - `set_filter()`: Hangi olayların yakalanacağını belirler
+  - `receive()`: Bir cihazdan olay alır
+  - `send()`: Bir cihaza olay gönderir
+
+- **device**: Bir klavye veya fare cihazını temsil eder
+  - `receive()`: Cihazdan bir olay alır
+  - `send()`: Cihaza bir olay gönderir
+  - `get_HWID()`: Cihazın donanım ID'sini alır
+
+#### 3.3.3. Veri Dönüşümleri
+
+`stroke.py` dosyası, klavye ve fare olaylarını interception surucusu tarafından anlaşılabilir ikili (binary) formatlara dönüştürür:
+
+- **key_stroke**: Klavye tuslarını temsil eder
+  - `data` ve `data_raw` özellikleri, tus verilerini ikili formatta sağlar
+  - `parse()` ve `parse_raw()` statik yöntemleri, ikili verileri stroke nesnelerine dönüştürür
+
+- **mouse_stroke**: Fare hareketlerini temsil eder
+  - Benzer şekilde, fare verilerini ikili formata dönüştürür
+
+### 3.4. Klavye Dinleme Mekanizması
+
+Program, pynput kütüphanesini kullanarak klavye olaylarını dinler. Bu, kullanıcının CTRL tusu ile koordinat belirlemesi veya başlat/durdur kısayolunu kullanması gibi durumlar için gereklidir.
+
+```python
+def key_listener(self):
+    self.pressed_keys = set()
+    def on_press(key):
+        if key in self.pressed_keys:
+            return
+        key_str = str(key)
+        self.pressed_keys.add(key)
+        
+        # Ctrl tusu basıldığında konum alma işlemi
+        if key == Key.ctrl_l:
+            if self.target_job == 1:  # HP konum alma işi
+                handle_target_job(self.take_heal_locate, self.heal_locate, "HP Kordinatları Alındı")
+            # ... diğer konum alma işlemleri
+            
+        # Diğer tus işlemleri
+        elif (key_str == self.start_shortcut):
+            self.start_stop()
+            
+    # ... diğer kod
+```
+
+Bu mekanizma:
+1. Kullanici tusa bastığında `on_press` fonksiyonu cagrilir
+2. `target_job` degiskenine göre ilgili işlem gerçekleştirilir
+3. Eğer basılan tus, başlat/durdur kısayolu ise program başlatılır/durdurulur
+
+### 3.5. Ayar Kaydetme ve Yükleme
+
+Program, kullanici ayarlarını `settings.ini` dosyasında saklar ve `configparser` kütüphanesini kullanarak bu dosyayı okur/yazar:
+
+```python
+def save_config(self):
+    config = configparser.ConfigParser()
+    config['Settings'] = {
+        'oto_heal': str(self.oto_heal),
+        'heal_locate': ','.join(map(str, self.heal_locate)),
+        # ... diğer ayarlar
+    }
+    with open(self.config_file, 'w', encoding='utf-8') as f:
+        config.write(f)
+```
+
+```python
+def load_config(self):
+    if not os.path.exists(self.config_file):
+        return
+    config = configparser.ConfigParser()
+    config.read(self.config_file, encoding='utf-8')
+    if 'Settings' in config:
+        settings = config['Settings']
+        self.oto_heal = settings.getboolean('oto_heal', False)
+        # ... diğer ayarlar
+```
+
+## 4. ÖZELLİKLER DETAYLI AÇIKLAMA
+
+### 4.1. HP/MP Otomatik Pot Kullanımı
+
+Bu ozellik, oyun icinde HP veya MP seviyesi düştüğünde otomatik olarak pot kullanır.
+
+#### 4.1.1. Çalışma Prensibi
+
+1. Kullanici, HP ve MP barlarının ekrandaki konumlarını belirler
+2. Kullanici, pot kullanımı icin bir kısayol tusu belirler
+3. Program belirli aralıklarla (varsayılan: 100ms) ekran görüntüsü alır
+4. Belirtilen konumdaki piksel renkleri kontrol edilir
+5. Eğer renk degerleri belirli bir eşiğin (varsayılan: 15) altına düşerse, ilgili kısayol tusuna basılır
+
+#### 4.1.2. Renk Kontrolü Algoritması
+
+HP ve MP barlarının doluluk oranı, genellikle bar içindeki renk yoğunluğu ile ilişkilidir. Bar boşaldıkça renk degerleri düşer.
+
+```python
+if rgb[0] <= self.heal_min and rgb[1] <= self.heal_min and rgb[2] <= self.heal_min:
+    # HP seviyesi düşük, pot kullan
+```
+
+Bu kontrol, RGB renk degerlerinin tümünün belirli bir eşiğin altında olup olmadığını kontrol eder. Bu, bar tamamen boşaldığında veya belirli bir seviyenin altına düştüğünde true değeri döndürür.
+
+### 4.2. Makro Sistemi
+
+Makro sistemi, belirli tuslara belirli aralıklarla otomatik olarak basılmasını sağlar.
+
+#### 4.2.1. Çalışma Prensibi
+
+1. Kullanici, makro tuslarını ve her tus arasındaki bekleme sürelerini belirler
+2. Program başlatıldığında, belirlenen tuslara sırayla basılır
+3. Her tus arasında belirtilen süre kadar beklenir
+4. "Sürekli kullan" seçeneği işaretlenmişse işlem sürekli tekrarlanır
+5. Ayrıca, hedef yoksa Z tusuna basılır (hedef tarama)
+
+#### 4.2.2. Tus Basma Döngüsü
+
+```python
+while (self.working and self.Makro_use and self.Makro_using):
+    # Makro tus slotlarını kullan
+    for i in range(4):
+        if not (self.working and self.Makro_use and self.Makro_using):
+            break
+            
+        # Slot boş değilse tusu bas
+        if self.Makro_keys_list[i]:
+            # ... tusu bas
+            # ... belirtilen süre kadar bekle
+    
+    # Hedef yoksa Z tusuna bas
+    if len(self.target_locate) == 2 and not self.last_target_state:
+        self.tusbas(self.keycodes['Z'], 0.01)
+        time.sleep(0.1)
+    
+    # Sürekli kullanım seçili değilse döngüyü bitir
+    if not self.Makro_use_continuously_bool:
+        self.working = False
+        # ... durdur
+```
+
+### 4.3. Hedef Tespiti
+
+Hedef tespiti, oyunda bir düşman hedef alındığında bunu otomatik olarak algılar ve makro sisteminin hedef yoksa Z tusuna basmasını sağlar.
+
+#### 4.3.1. Çalışma Prensibi
+
+1. Kullanici, hedef cubugunun ekrandaki konumunu belirler
+2. Program, bu konumdan bir ekran görüntüsü alır
+3. Görüntüdeki kırmızı renk yoğunluğu analiz edilir
+4. Belirli bir eşiğin üzerinde kırmızı piksel varsa, bir hedef var kabul edilir
+
+#### 4.3.2. Renk Analizi Algoritması
+
+```python
+def check_target(self):
+    img = self.take_target_screenshot()
+    if img is None:
+        return False
+        
+    # Hedef cubuğunun rengini kontrol et
+    red_mask = (
+        (img[:, :, 0] < 100) &  # Düşük mavi
+        (img[:, :, 1] < 100) &  # Düşük yeşil
+        (img[:, :, 2] > 150)    # Yüksek kırmızı
+    )
+    
+    # Kırmızı piksellerin sayısını kontrol et
+    red_pixel_count = np.sum(red_mask)
+    has_target = red_pixel_count > 100  # En az 100 kırmızı piksel varsa hedef var demektir
+    
+    return has_target
+```
+
+Bu algoritma:
+1. Hedef cubuğu bölgesinin görüntüsünü alır
+2. BGR formatında düşük mavi (B), düşük yeşil (G) ve yüksek kırmızı (R) değerlerine sahip pikselleri filtreler
+3. Bu filtreye uyan piksel sayısını hesaplar
+4. Piksel sayısı belirli bir eşiğin üzerindeyse (100), bir hedef var kabul eder
+
+### 4.4. MagicHammer Özelliği
+
+MagicHammer ozelliği, belirli bir konumdaki pikselin belirli bir rengi (#AC3335) sahip olup olmadığını kontrol eder ve eşleşme durumunda belirlenen bir tusa otomatik olarak basar.
+
+#### 4.4.1. Çalışma Prensibi
+
+1. Kullanici, izlenmek istenen ekran konumunu belirler
+2. Kullanici, basılacak tusu belirler
+3. Program belirli aralıklarla (100ms) belirtilen konumdaki pikselin rengini kontrol eder
+4. Piksel rengi hedef rengi ±20 birim tolerans ile benziyorsa, belirlenen tusa basılır
+5. Tusa basıldıktan sonra 5 saniye beklenir (spam önleme)
+
+#### 4.4.2. Renk Karşılaştırma Algoritması
+
+```python
+# Hedef renk #AC3335 (BGR: 53, 51, 172) ile karşılaştır (toleranslı)
+b_diff = abs(int(pixel_color[0]) - self.magic_hammer_target_color[0])
+g_diff = abs(int(pixel_color[1]) - self.magic_hammer_target_color[1])
+r_diff = abs(int(pixel_color[2]) - self.magic_hammer_target_color[2])
+
+# Renk yaklaşık olarak eşleşiyor mu?
+if b_diff <= renk_toleransi and g_diff <= renk_toleransi and r_diff <= renk_toleransi:
+    # Son kullanımdan beri yeterli süre geçti mi?
+    current_time = time.time() * 1000  # milisaniye cinsinden şu anki zaman
+    if current_time - self.magic_hammer_last_used >= bekleme_suresi_ms:
+        # ... tusu bas
+```
+
+Bu algoritma:
+1. Mevcut piksel rengi ile hedef renk arasındaki farkı her kanal (B, G, R) için ayrı ayrı hesaplar
+2. Farkların hepsi belirlenen tolerans değerinin (20) altında ise renklerin yaklaşık olarak eşleştiğini kabul eder
+3. Son kullanımdan bu yana yeterli süre geçtiyse (5 saniye), tusu basar
+
+## 5. TEKNİK DETAYLAR
+
+### 5.1. Çoklu İş Parçacığı (Threading) Kullanımı
+
+Program, çeşitli görevleri eş zamanlı olarak yürütmek icin Python'un `threading` modulu kullanır:
+
+```python
+threading.Thread(target=self.heal_mana_helper, daemon=True).start()
+```
+
+Tüm thread'ler `daemon=True` ile başlatılır, böylece ana program sonlandığında thread'ler de otomatik olarak sonlandırılır.
+
+### 5.2. Güvenlik ve Tespit Önleme
+
+Program, tespit edilmemek icin çeşitli önlemler alır:
+
+1. **Rastgele Pencere Başlığı**: Her başlatıldığında rastgele bir pencere başlığı kullanır
+   ```python
+   self.isim = self.random_name()
+   self.setWindowTitle(self.isim)
+   ```
+
+2. **Düşük Seviye Tus Simülasyonu**: Oyun tarafından algılanması daha zor olan Interception surucusu kullanılır
+
+3. **Tus Basış/Bırakış Gecikmesi**: Tuslar, gerçek bir insan tarafından basılıyormuş gibi gecikme ile basılır ve bırakılır
+
+### 5.3. Hata İşleme
+
+Program, çeşitli hata durumlarına karşı try-except blokları kullanır:
+
+```python
+try:
+    # ... işlemler
+except Exception as e:
+    print(f"Hata: {e}")
+```
+
+Özellikle ekran görüntüsü alma, tus basma gibi kritik işlemlerde hata yakalama ve raporlama yapılır.
+
+### 5.4. Kullanıcı Arayüzü
+
+Program, PyQt5 kütüphanesini kullanarak modern bir kullanıcı arayüzü sunar:
+
+1. **Karanlık Tema**: Kullanıcı dostu bir karanlık tema uygulanır
+2. **Uyarı Mesajları**: Önemli durumlarda kullanıcıya bilgilendirme mesajları gösterilir
+3. **Araç İpuçları**: Her kontrol öğesi, kullanım amacını açıklayan araç ipuçlarına sahiptir
+
+## 6. KULLANILAN KÜTÜPHANELER
+
+### 6.1. Temel Kütüphaneler
+
+1. **PyQt5**: Kullanıcı arayüzü için
+2. **pynput**: Klavye olaylarını dinlemek icin
+3. **mss**: Hızlı ekran görüntüsü almak icin
+4. **numpy**: Görüntü işleme ve renk analizi icin
+5. **configparser**: Ayarları kaydetmek ve yüklemek icin
+6. **threading**: Çoklu iş parçacığı yönetimi icin
+7. **time**: Zamanlama ve gecikme işlemleri icin
+8. **ctypes**: Düşük seviye Windows API çağrıları icin
+
+### 6.2. Özel Modüller
+
+1. **interception**: Klavye ve fare olaylarını simüle etmek icin
+2. **stroke**: Tus vuruşlarını ve fare hareketlerini temsil etmek icin
+3. **consts**: Sabit degerleri tanımlamak icin
+
+## 7. ÖZET VE DEĞERLENDİRME
+
+Knight Online Makro Programı, oyuncuların HP/MP potlarını otomatik kullanmasını, belirli tus kombinasyonlarını otomatik olarak gerçekleştirmesini ve özel yetenekleri (MagicHammer gibi) otomatik olarak kullanmasını sağlayan kapsamlı bir araçtır. 
+
+Program, ekran renk analizi ve düşük seviye tus simülasyonu gibi teknikleri kullanarak oyunla etkileşim kurar. Çoklu iş parçacığı yapısı sayesinde çeşitli görevleri eş zamanlı olarak yürütebilir ve kullanıcı dostu arayüzü ile kolay yapılandırma sağlar.
+
+Dosya yapısı modüler olup, her bileşen belirli bir görevi yerine getirir: combined.py ana program mantığını, stroke.py ve interception.py tus simülasyon altyapısını, consts.py sabit degerleri sağlar.
+
+Programdaki en kritik bileşenler, donanım düzeyinde tus simülasyonu sağlayan interception surucusu ve ekran renk analizi yapan mss/numpy kütüphanelerinin kullanımıdır. Bu bileşenler, programın tespit edilmeden ve verimli bir şekilde çalışmasını sağlar. 

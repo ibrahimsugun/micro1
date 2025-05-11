@@ -1,0 +1,418 @@
+# EKRAN OKUYUCU VE GÖRSEL KARŞILAŞTIRICI REHBERİ
+
+Bu rehber, Python ile ekran okuma ve görsel karşılaştırma işlevlerini gerçekleştirmek için kullanılacak modüler bir yapıyı açıklamaktadır. Mevcut kodlar, herhangi bir Python projesine entegre edilebilecek şekilde tasarlanmıştır.
+
+## 1. GENEL YAPI
+
+Proje aşağıdaki modülleri içermektedir:
+
+- `image_processor.py`: Ekran görüntüsü alma ve görsel karşılaştırma
+- `keyboard_controller.py`: Klavye kontrolü
+- `config.py`: Yapılandırma ayarları
+- `database.py`: Veritabanı işlemleri
+- `ui.py`: Kullanıcı arayüzü fonksiyonları
+- `scanner.py`: Tarama işlevi (ana işlemci)
+
+## 2. TEMEL ÇALIŞMA PRENSİBİ
+
+Sistem, ekranda belirli bir görüntüyü (template) arar, bulduğunda veya bulamadığında yapılandırılabilir tuşlara basabilir. Görüntüler bir veritabanında kayıtlıdır ve birden fazla arama görevi tanımlanabilir.
+
+## 3. KULLANILACAK TEMEL FONKSİYONLAR
+
+### 3.1. Ekran Görüntüsü Alma
+
+```python
+from modules.image_processor import get_screen_region
+
+# Belirli bir ekran bölgesinin görüntüsünü almak için:
+# x1, y1: Sol üst köşe koordinatları
+# x2, y2: Sağ alt köşe koordinatları
+screen = get_screen_region(x1, y1, x2, y2)
+```
+
+### 3.2. Görüntü Arama
+
+```python
+from modules.image_processor import find_image_on_screen
+
+# Ekranda bir görüntüyü aramak için:
+# template_path: Aranacak görüntünün dosya yolu
+# region: Arama yapılacak bölge (x1, y1, x2, y2), opsiyonel
+# threshold: Eşleşme eşiği (0.0-1.0), varsayılan 0.8
+result = find_image_on_screen(template_path, region, threshold)
+
+# Sonuç başarılıysa, result değişkeni (x, y, w, h) değerlerini içerir (konum ve boyut)
+# Sonuç başarısızsa, result değeri None olur
+if result:
+    x, y, w, h = result
+    print(f"Görüntü bulundu! Konum: ({x}, {y}), Boyut: {w}x{h}")
+else:
+    print("Görüntü bulunamadı!")
+```
+
+### 3.3. Klavye Kontrolü
+
+```python
+from modules.keyboard_controller import press_key, is_key_pressed, wait_for_key_press
+
+# Belirli bir tuşa basmak için:
+press_key("e")
+
+# Bir tuşun basılı olup olmadığını kontrol etmek için:
+if is_key_pressed("q"):
+    print("Q tuşuna basıldı!")
+
+# Belirli bir tuşa basılmasını beklemek için:
+# timeout: Maksimum bekleme süresi (saniye), opsiyonel
+wait_for_key_press("space", timeout=10)
+```
+
+### 3.4. Ekran Bölgesi Seçimi
+
+```python
+from modules.ui import select_screen_region
+
+# Kullanıcının ekranda bir bölge seçmesini sağlamak için:
+# wait_key: Seçimi onaylamak için basılacak tuş, varsayılan 'space'
+region = select_screen_region(wait_key='space')
+# Dönen değer (x1, y1, x2, y2) şeklinde bölge koordinatlarıdır
+```
+
+### 3.5. Görüntü Üzerine Çizim
+
+```python
+from modules.image_processor import draw_rectangle, display_image
+
+# Görüntü üzerine dikdörtgen çizmek için:
+# image: Üzerine çizim yapılacak görüntü
+# x, y: Sol üst köşe koordinatları
+# w, h: Genişlik ve yükseklik
+# color: RGB renk değeri, varsayılan (0, 255, 0) (yeşil)
+# thickness: Çizgi kalınlığı, varsayılan 2
+result_image = draw_rectangle(image, x, y, w, h, color=(0, 255, 0), thickness=2)
+
+# Görüntüyü ekranda göstermek için:
+display_image("Pencere Adı", result_image)
+```
+
+## 4. VERİTABANI İŞLEMLERİ
+
+Sistem, görüntü eşleştirme görevlerini SQLite veritabanında saklar. Bu şekilde birden çok görsel ve eylem tanımlanabilir.
+
+```python
+from modules.database import initialize_database, add_task, get_all_tasks, get_task_by_id
+
+# Veritabanını başlatmak için:
+initialize_database()
+
+# Yeni bir görsel arama görevi eklemek için:
+task_id = add_task(
+    name="Test Görevi",
+    image_path="images/test.png",  # Aranacak görüntü
+    key_to_press="e",              # Görüntü bulunduğunda basılacak tuş
+    key_when_not_found="6",        # Görüntü bulunamadığında basılacak tuş
+    check_interval=5,              # Kontrol aralığı (saniye)
+    threshold=0.8                  # Eşleşme eşiği (0.0-1.0)
+)
+
+# Tüm görevleri listelemek için:
+tasks = get_all_tasks()
+
+# Belirli bir görevi ID'ye göre almak için:
+task = get_task_by_id(task_id)
+```
+
+## 5. ÖRNEK KULLANIM SENARYOLARI
+
+### 5.1. Basit Görüntü Arama ve Tuş Basma
+
+```python
+import time
+from modules.image_processor import get_screen_region, find_image_on_screen
+from modules.keyboard_controller import press_key
+
+# Arama yapılacak ekran bölgesi
+region = (0, 0, 1920, 1080)  # Tüm ekran (çözünürlüğe göre ayarlayın)
+
+# Görüntü yolu
+image_path = "images/test.gif"  # Aranacak görüntü
+
+# Ana döngü
+while True:
+    # Görüntü arama
+    result = find_image_on_screen(image_path, region, threshold=0.8)
+    
+    if result:
+        print("Görüntü bulundu!")
+        press_key("e")  # Görüntü bulunduğunda 'e' tuşuna bas
+    else:
+        print("Görüntü bulunamadı!")
+        press_key("6")  # Görüntü bulunamadığında '6' tuşuna bas
+    
+    # 5 saniye bekle
+    time.sleep(5)
+```
+
+### 5.2. Çoklu Görüntü Takibi
+
+```python
+import time
+import cv2
+from modules.image_processor import get_screen_region, find_image_on_screen, draw_rectangle, display_image
+from modules.keyboard_controller import press_key, is_key_pressed
+
+# Arama yapılacak ekran bölgesi
+region = (0, 0, 1920, 1080)  # Tüm ekran (çözünürlüğe göre ayarlayın)
+
+# Aranacak görüntü listesi
+images = [
+    {"path": "images/image1.png", "key": "1", "threshold": 0.8},
+    {"path": "images/image2.png", "key": "2", "threshold": 0.7},
+    {"path": "images/image3.png", "key": "3", "threshold": 0.9}
+]
+
+print("Program başladı. Çıkmak için 'q' tuşuna basın.")
+
+# Ana döngü
+while True:
+    # Çıkış kontrolü
+    if is_key_pressed('q'):
+        print("Program sonlandırılıyor...")
+        break
+    
+    # Ekran görüntüsü al
+    screen = get_screen_region(*region)
+    if screen is None:
+        time.sleep(0.1)
+        continue
+    
+    display_screen = screen.copy()
+    found_any = False
+    
+    # Her bir görüntüyü ara
+    for img in images:
+        result = find_image_on_screen(img["path"], region, img["threshold"])
+        
+        if result:
+            found_any = True
+            x, y, w, h = result
+            
+            # Bulunan bölgeyi işaretle
+            display_screen = draw_rectangle(display_screen, x, y, w, h)
+            
+            # İlgili tuşa bas
+            press_key(img["key"])
+            print(f"'{img['path']}' görüntüsü bulundu! '{img['key']}' tuşuna basıldı.")
+    
+    # Ekranda göster
+    display_image("Çoklu Tespit", display_screen)
+    
+    # CPU kullanımını azaltmak için kısa bekleme
+    time.sleep(0.1)
+    
+    # OpenCV pencere kontrolü
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
+
+cv2.destroyAllWindows()
+```
+
+### 5.3. Kullanıcı Tarafından Seçilen Bölgede Arama
+
+```python
+from modules.ui import select_screen_region
+from modules.image_processor import find_image_on_screen, close_all_windows
+from modules.keyboard_controller import press_key, is_key_pressed
+import time
+import cv2
+
+# Kullanıcıya ekranda bir bölge seçtir
+print("Lütfen tarama yapılacak ekran bölgesini seçin...")
+region = select_screen_region()
+print(f"Seçilen bölge: {region}")
+
+# Aranacak görüntü
+image_path = "images/test.gif"
+
+print("Tarama başlatıldı. Çıkmak için 'q' tuşuna basın.")
+
+try:
+    # Ana döngü
+    while True:
+        # Çıkış kontrolü
+        if is_key_pressed('q'):
+            print("Tarama sonlandırılıyor...")
+            break
+        
+        # Görüntü eşleştirme
+        result = find_image_on_screen(image_path, region)
+        
+        # Görüntü bulundu mu kontrol et
+        if result:
+            x, y, w, h = result
+            print(f"Görüntü bulundu! Konum: ({x}, {y})")
+            press_key("e")  # Görüntü bulunduğunda 'e' tuşuna bas
+            time.sleep(0.5)  # Sürekli basmaması için kısa bir bekleme
+        
+        # CPU kullanımını azaltmak için kısa bekleme
+        time.sleep(0.1)
+finally:
+    close_all_windows()
+```
+
+## 6. GÖRÜNTÜ KARŞILAŞTIRMA EŞİĞİ (THRESHOLD)
+
+Görüntü arama fonksiyonu (`find_image_on_screen`), bir eşleşme eşiği (threshold) parametresi alır. Bu parametre 0.0 ile 1.0 arasında bir değer olmalıdır:
+
+- 1.0: Tam eşleşme (piksel piksel aynı olmalı)
+- 0.8: İyi bir eşleşme (varsayılan)
+- 0.5: Orta düzeyde eşleşme
+- 0.0: Zayıf eşleşme (her zaman bir eşleşme bulur)
+
+Eşik değerini uygulamanızın ihtiyacına göre ayarlayın. Yanlış pozitifleri azaltmak için yüksek bir eşik (0.8-0.9) kullanın. Eşleşme bulmakta zorlanıyorsanız, değeri biraz düşürün.
+
+## 7. PERFORMANS İYİLEŞTİRMELERİ
+
+- **Arama Bölgesini Sınırlandırma**: Tüm ekran yerine belirli bir bölgede arama yapın.
+- **Arama Sıklığını Azaltma**: Her saniye yerine belirli aralıklarla kontrol edin.
+- **Görüntü Boyutunu Küçültme**: Büyük görüntüler yerine daha küçük, ayırt edici görüntüler kullanın.
+- **Paralel İşleme**: Birden fazla görüntüyü aynı anda arayacaksanız, işlemi paralel hale getirin.
+
+## 8. HATA AYIKLAMA
+
+Eğer görüntü bulunamıyorsa:
+
+1. Eşik değerini düşürmeyi deneyin (örneğin 0.7 veya 0.6)
+2. Aranacak görüntünün ekrandaki görüntüyle tam olarak aynı olduğundan emin olun
+3. Renk farklılıkları, ışık durumu ve çözünürlük gibi faktörleri kontrol edin
+4. Debug modunda çalıştırın ve eşleşme değerlerini inceleyin
+
+## 9. KENDİ MODÜLÜNÜZÜ OLUŞTURMA
+
+Mevcut sistemi kendi projenize entegre etmek için, aşağıdaki örnek yapıyı kullanabilirsiniz:
+
+```python
+# my_screen_reader.py
+
+import os
+import time
+import cv2
+import numpy as np
+from PIL import ImageGrab
+import keyboard
+
+# Gerekli modülleri içe aktar
+from modules.image_processor import get_screen_region, find_image_on_screen
+from modules.keyboard_controller import press_key, is_key_pressed
+
+class ScreenReader:
+    def __init__(self):
+        self.images_to_detect = []
+        self.active_region = None
+        self.running = False
+    
+    def add_image(self, image_path, key_to_press, threshold=0.8):
+        """Tespit edilecek bir görüntü ekler."""
+        self.images_to_detect.append({
+            "path": image_path,
+            "key": key_to_press,
+            "threshold": threshold
+        })
+        return len(self.images_to_detect) - 1  # Görüntü indeksini döndür
+    
+    def set_region(self, x1, y1, x2, y2):
+        """Tarama yapılacak ekran bölgesini ayarlar."""
+        self.active_region = (x1, y1, x2, y2)
+    
+    def select_region_interactively(self):
+        """Kullanıcının ekranda interaktif olarak bir bölge seçmesini sağlar."""
+        from modules.ui import select_screen_region
+        self.active_region = select_screen_region()
+        return self.active_region
+    
+    def start_scanning(self, interval=0.1, exit_key='q'):
+        """Tarama işlemini başlatır."""
+        if not self.images_to_detect:
+            print("Hata: Tespit edilecek hiç görüntü eklenmedi!")
+            return False
+        
+        if not self.active_region:
+            print("Hata: Tarama bölgesi belirlenmedi!")
+            return False
+        
+        self.running = True
+        print(f"Tarama başlatıldı. Çıkmak için '{exit_key}' tuşuna basın.")
+        
+        try:
+            while self.running:
+                # Çıkış kontrolü
+                if is_key_pressed(exit_key):
+                    print("Tarama sonlandırılıyor...")
+                    break
+                
+                # Her bir görüntüyü kontrol et
+                for img in self.images_to_detect:
+                    result = find_image_on_screen(
+                        img["path"], 
+                        self.active_region, 
+                        img["threshold"]
+                    )
+                    
+                    if result:
+                        x, y, w, h = result
+                        print(f"Görüntü bulundu: {img['path']} - Konum: ({x}, {y})")
+                        press_key(img["key"])
+                
+                # CPU kullanımını azaltmak için bekleme
+                time.sleep(interval)
+                
+        except Exception as e:
+            print(f"Tarama sırasında hata oluştu: {e}")
+            return False
+        finally:
+            self.running = False
+            cv2.destroyAllWindows()
+        
+        return True
+    
+    def stop_scanning(self):
+        """Tarama işlemini durdurur."""
+        self.running = False
+
+# Kullanım örneği
+if __name__ == "__main__":
+    reader = ScreenReader()
+    
+    # Aranacak görüntüleri ekle
+    reader.add_image("images/test.gif", "e")
+    reader.add_image("images/button.png", "space")
+    
+    # Bölgeyi manuel olarak ayarla veya interaktif seç
+    # reader.set_region(0, 0, 1920, 1080)
+    reader.select_region_interactively()
+    
+    # Taramayı başlat
+    reader.start_scanning()
+```
+
+## 10. KAYNAK VE BAĞIMLILIKLAR
+
+Sistem aşağıdaki Python kütüphanelerine bağımlıdır:
+
+- OpenCV (cv2): Görüntü işleme
+- NumPy: Sayısal hesaplamalar
+- Pillow (PIL): Ekran görüntüsü alma
+- PyAutoGUI: Fare pozisyonu alma ve ekran görüntüsü alma
+- Keyboard: Klavye olaylarını dinleme ve tuşlara basma
+- SQLite3: Veritabanı işlemleri (Python'un standart kütüphanesinde)
+
+Bağımlılıkları yüklemek için:
+```
+pip install opencv-python numpy Pillow pyautogui keyboard
+```
+
+## 11. SONUÇ
+
+Bu rehber, ekran okuma ve görsel karşılaştırma işlevlerini gerçekleştirmek için temel yapıları sağlamaktadır. Sistemi kendi projelerinize entegre ederek, ekrandaki belirli görselleri tespit etme ve bunlara göre otomatik eylemler gerçekleştirme yeteneği kazanabilirsiniz.
+
+Daha fazla bilgi için, ilgili modüllerin kaynak kodlarını inceleyebilirsiniz. 

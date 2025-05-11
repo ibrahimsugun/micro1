@@ -1,0 +1,384 @@
+# FARE KAYDEDİCİ UYGULAMASI: DETAYLI AÇIKLAMA
+
+## Genel Bakış
+
+Fare Kaydedici (Mouse Recorder), ekrandaki fare tıklamalarını kaydeden ve daha sonra bu tıklamaları otomatik olarak tekrarlayabilen bir otomasyon aracıdır. Uygulama, Windows işletim sisteminde çalışmak üzere tasarlanmış olup, PyQt5 tabanlı bir grafik arayüzüne sahiptir.
+
+## İşlevsel Özellikler
+
+1. **Fare Hareketlerini Kaydetme**:
+   - Sol ve sağ fare tıklamalarını doğru konumlarıyla kaydeder
+   - Tıklamalar arasındaki gecikme sürelerini milisaniye cinsinden depolar
+   - Gerçek zamanlı kayıt sırasında fare hareketlerini izler
+
+2. **Tıklama Otomasyonu**:
+   - Kaydedilen tıklamaları doğru koordinatlarda tekrar eder
+   - Sağ ve sol tıklamaları ayrı ayrı tanıyarak doğru tıklama tipini uygular
+   - Win32API kullanarak gerçek donanım düzeyinde fare tıklaması gerçekleştirir
+
+3. **Oynatma Seçenekleri**:
+   - Tek seferlik oynatma veya sürekli tekrarlama modu
+   - Kaydedilen gerçek gecikme süreleriyle veya sabit gecikmelerle oynatma
+   - Klavye kısayollarıyla kolay kontrol (C: Oynat, B: Kaydı Durdur, K: Kaydı Başlat, ESC: Durdur)
+
+4. **Profil Yönetimi**:
+   - Tıklama dizilerini adlandırılmış profiller olarak kaydedebilme
+   - Farklı görevler için birden fazla profilin saklanması
+   - Profillerin settings.ini dosyasında JSON formatında saklanması
+   - Uygulama başlangıcında otomatik olarak son kullanılan profilin yüklenmesi
+
+## Program Akışı ve Mimarisi
+
+### 1. Başlangıç ve İlklendirme
+
+1. **Ana Başlangıç Noktası** (`if __name__ == "__main__"`):
+   - PyQt uygulaması oluşturulur (`QApplication`)
+   - Ana uygulama penceresi oluşturulur (`PointRecorderApp`)
+   - Pencere görüntülenir ve uygulama döngüsü başlatılır
+
+2. **PointRecorderApp İlklendirmesi** (`__init__` metodu):
+   - Uygulama durumu değişkenleri tanımlanır: 
+     * `click_actions`: Tıklama eylemleri listesi
+     * `is_recording`: Kayıt modunda olup olmadığı
+     * `is_playing`: Oynatma modunda olup olmadığı
+     * `playback_thread`: Oynatma iş parçacığı
+     * `repeat_playback`: Tekrarlı oynatma modu açık/kapalı
+     * `last_click_time`: Son tıklama zamanı
+     * `use_recorded_delays`: Kaydedilen gecikmeler kullanılacak/kullanılmayacak
+     * `current_profile_name`: Aktif profil adı
+   - MouseListener nesnesi oluşturulur ve sinyal-slot bağlantıları kurulur
+   - Klavye dinleme için KeyboardSignals nesnesi oluşturulur ve bağlantıları yapılır
+   - `init_ui()` metodu çağrılarak arayüz oluşturulur 
+   - Klavye dinleyici zamanlayıcı başlatılır
+   - `load_settings()` metodu ile son kullanılan profil yüklenir
+
+3. **Kullanıcı Arayüzü Kurulumu** (`init_ui` metodu):
+   - Ana pencere boyutları ve başlığı ayarlanır
+   - Tüm kontroller (butonlar, etiketler, listeler vb.) oluşturulur ve düzenlenir:
+     * Durum etiketi
+     * Koordinat bilgisi 
+     * Profil bilgisi
+     * Klavye kısayolları açıklaması
+     * Kayıt butonları (Kaydet/Durdur)
+     * Tıklama listesi
+     * Profil işlemleri (Kaydet/Yükle/Sıfırla)
+     * Oynatma seçenekleri (Tekrarlama modu, gecikme kullanımı)
+     * Oynatma butonları (Oynat/Durdur)
+   - Tüm kontrollerin sinyal-slot bağlantıları yapılır
+
+### 2. Fare İzleme Mekanizması
+
+1. **MouseListener Sınıfı**:
+   - Win32API kullanarak fare durumunu sürekli izleyen ayrı bir iş parçacığında çalışır
+   - Fare dinleme başlatma (`start_listening`):
+     * `is_listening` durumu true yapılır
+     * `_listen_mouse` metodu ayrı bir iş parçacığında başlatılır
+   - Fare dinleme durdurma (`stop_listening`):
+     * `is_listening` durumu false yapılır
+     * İş parçacığının sonlanması beklenir
+   - Fare dinleme döngüsü (`_listen_mouse`):
+     * 50ms aralıklarla fare tuş durumları kontrol edilir
+     * Sol ve sağ tuşlar için ayrı kontrol yapılır
+     * Tuş durumlarını takip etmek için durum değişkenleri kullanılır
+     * Tıklama yapıldığında ilgili sinyal tetiklenir (left_click veya right_click)
+
+2. **Klavye İzleme Mekanizması**:
+   - KeyboardSignals sınıfı sinyal tanımları içerir
+   - `start_keyboard_timer` metodu 100ms aralıklarla klavye kontrolü için zamanlayıcı başlatır
+   - `check_keyboard` metodu her tetiklenmede şu tuşları kontrol eder:
+     * 'b': Kaydı durdur
+     * 'c': Oynat
+     * 'k': Kaydı başlat
+     * 'esc': Durdur
+   - Her tuş basımı için tekrar basım hızını kontrol etmek için son basım zamanı kaydedilir
+   - İlgili tuş basıldığında uygun sinyal tetiklenir
+
+### 3. Kaydetme İşlemi
+
+1. **Kayıt Başlatma** (`start_recording` metodu):
+   - Eğer zaten kayıt veya oynatma devam ediyorsa işlem yapılmaz
+   - `is_recording` true yapılır ve `last_click_time` sıfırlanır
+   - Durum etiketi güncellenir
+   - Buton durumları güncellenir (kayıt butonu devre dışı, durdur butonu etkin)
+   - MouseListener ile fare dinleme başlatılır
+   - Kullanıcıya bilgi mesajı gösterilir
+
+2. **Tıklama Kaydı** (`on_left_click` ve `on_right_click` metotları):
+   - Kayıt modunda ise (`is_recording` true ise):
+     * Tıklama anı zaman damgası oluşturulur
+     * Eğer daha önceki bir tıklama varsa aralarındaki gecikme hesaplanır
+     * Önceki tıklamanın gecikme süresi güncellenir
+     * Yeni tıklama için bir ClickAction nesnesi oluşturulur (sağ/sol tıklama bilgisiyle)
+     * Oluşturulan nesne `click_actions` listesine eklenir
+     * Liste güncellenir ve durum etiketi güncellenir
+
+3. **Kayıt Durdurma** (`stop_recording` metodu):
+   - Kayıt modu devre dışı bırakılır (`is_recording` false yapılır)
+   - Durum etiketi güncellenir
+   - Mouse dinleme durdurulur
+   - Son tıklamanın gecikme bilgisi 0 olarak ayarlanır
+   - Kullanıcıya kaydedilen tıklama sayısıyla ilgili bilgi mesajı gösterilir
+
+### 4. Oynatma İşlemi
+
+1. **Oynatma Başlatma** (`start_playback` metodu):
+   - Kaydedilmiş tıklama yoksa uyarı gösterilir ve işlem yapılmaz
+   - Zaten kayıt veya oynatma modundaysa işlem yapılmaz
+   - `is_playing` true yapılır
+   - Durum etiketi güncellenir (tekrarlı/tek seferlik ve gecikme tipi bilgisiyle)
+   - Kullanıcıya oynatma başlatıldığı bilgisi gösterilir
+   - `play_actions` metodu ayrı bir iş parçacığında başlatılır
+
+2. **Tıklamaları Oynatma** (`play_actions` metodu):
+   - Oynatma modunda (`is_playing` true) oldukça çalışır
+   - Her bir kaydedilmiş tıklama için:
+     * Tıklama tipine göre sağ veya sol tıklama fonksiyonu çağrılır (rightclick/leftclick)
+     * Tıklamadan sonra uygun gecikme uygulanır:
+       - Eğer `use_recorded_delays` true ise kaydedilen gecikme süresi kullanılır
+       - Değilse sabit 250ms gecikme kullanılır
+     * Hata oluşursa konsola bilgi yazdırılır
+   - Eğer tekrarlı mod (`repeat_playback`) aktif değilse:
+     * Oynatma durdurulur (`is_playing` false yapılır)
+     * Ana iş parçacığına StatusUpdateEvent gönderilir
+   - Tekrarlı modda sonraki döngüye geçmeden 500ms beklenir
+
+3. **Oynatma Durdurma** (`stop_playback` metodu):
+   - Oynatma modu devre dışı bırakılır (`is_playing` false yapılır)
+   - Durum etiketi güncellenir
+   - Oynatma thread'i doğal olarak sonlanır (is_playing kontrolü)
+
+### 5. Profil Yönetimi
+
+1. **Profil Kaydetme** (`save_profile` metodu):
+   - Profil adı alınır ve boş olup olmadığı kontrol edilir
+   - Eğer kaydedilmiş tıklama yoksa kullanıcıya boş profil kaydetmek isteyip istemediği sorulur
+   - `save_settings` metodu çağrılarak profil kaydedilir:
+     * Mevcut ayarlar dosyası okunur (varsa)
+     * Profil adına göre yeni bir bölüm oluşturulur
+     * Tıklama verileri JSON formatına dönüştürülür
+     * Tekrar ve gecikme ayarları kaydedilir
+     * Dosyaya yazılır
+   - Profil etiketi güncellenir ve kullanıcıya bilgi gösterilir
+
+2. **Profil Yükleme** (`load_profile` metodu):
+   - Profil adı alınır ve boş olup olmadığı kontrol edilir
+   - Ayarlar dosyasının varlığı kontrol edilir
+   - İlgili profil bölümünün varlığı kontrol edilir
+   - `load_settings` metodu ile profil yüklenir:
+     * Profil bölümünden tıklama verileri okunur
+     * JSON verisi ClickAction nesnelerine dönüştürülür
+     * Tekrar ve gecikme ayarları yüklenir
+     * Liste güncellenir ve durum etiketi güncellenir
+   - Yüklenen tıklama sayısı hakkında kullanıcıya bilgi verilir
+
+3. **Ayarlar Sıfırlama** (`reset_recording` metodu):
+   - Kayıt veya oynatma devam ediyorsa uyarı gösterilir ve işlem yapılmaz
+   - Kullanıcıya onay sorusu gösterilir
+   - Onaylanırsa tüm tıklama kayıtları temizlenir
+   - Liste ve durum güncellenir
+   - Kullanıcıya bilgi mesajı gösterilir
+
+### 6. Yardımcı Sınıflar ve Fonksiyonlar
+
+1. **ClickAction Sınıfı**:
+   - Her tıklama için veri saklama yapısı
+   - Şu bilgileri içerir:
+     * x, y: Tıklama koordinatları
+     * is_right_click: Sağ/sol tıklama bilgisi
+     * timestamp: Tıklama zamanı
+     * delay_after: Bu tıklamadan sonraki bekleme süresi (ms)
+   - String gösterimi için özel __str__ metodu içerir
+
+2. **Fare Tıklama Fonksiyonları**:
+   - `rightclick`: Win32API ile sağ tıklama gerçekleştirir
+   - `leftclick`: Win32API ile sol tıklama gerçekleştirir
+   - Her iki fonksiyon da şu adımları uygular:
+     * Fare imlecini belirtilen konuma taşır
+     * Fare tuşuna basma olayı gönderir
+     * Kısa bekleme yapar
+     * Fare tuşunu bırakma olayı gönderir
+
+3. **AutoCloseMessageBox Sınıfı**:
+   - Belirli bir süre sonra (varsayılan 2 saniye) otomatik kapanan mesaj kutusu
+   - Zamanlayıcı ve geri sayım etiketi içerir
+   - `show_auto_close_info` ve `show_auto_close_warning` fonksiyonları bu sınıfı kullanır
+
+4. **StatusUpdateEvent Sınıfı**:
+   - Farklı thread'ler arasında durum güncellemesi için özel QEvent sınıfı
+   - Oynatma thread'i bittiğinde ana thread'e bildirim göndermek için kullanılır
+
+5. **Veri Dönüştürme Fonksiyonları**:
+   - `click_action_to_dict`: ClickAction nesnesini JSON uyumlu sözlüğe dönüştürür
+   - `dict_to_click_action`: JSON sözlüğünden ClickAction nesnesi oluşturur
+
+## Veri Yapısı ve Depolama
+
+1. **Tıklama Verileri**:
+   - Her tıklama bir ClickAction nesnesi olarak temsil edilir
+   - Program çalışırken tüm tıklamalar `click_actions` listesinde tutulur
+   - Veri yapısı:
+   ```
+   ClickAction {
+     x: int,                  # X koordinatı
+     y: int,                  # Y koordinatı
+     is_right_click: bool,    # True=Sağ Tıklama, False=Sol Tıklama
+     timestamp: datetime,     # Tıklama zamanı
+     delay_after: int         # Sonraki tıklamaya kadar bekleme (ms)
+   }
+   ```
+
+2. **Ayarlar Dosyası** (settings.ini):
+   - INI formatında yapılandırma dosyası
+   - Dosya yapısı:
+   ```
+   [Settings]
+   last_profile = "son_kullanilan_profil_adi"
+
+   [Profile_profil_adi]
+   click_data = [...JSON formatında tıklama verileri dizisi...]
+   repeat = 0 veya 1 (tekrarlama modu açık/kapalı)
+   use_delays = 0 veya 1 (kaydedilen gecikmeler kullanılacak/kullanılmayacak)
+   ```
+   - Her profil için ayrı bir [Profile_XXX] bölümü oluşturulur
+   - click_data alanı, tüm tıklama verilerini JSON formatında içerir
+
+## Çoklu İş Parçacığı Yapısı
+
+1. **Ana İş Parçacığı**:
+   - PyQt uygulama arayüzü ve olay döngüsü burada çalışır
+   - Kullanıcı etkileşimleri burada işlenir
+   - Arayüz güncellemeleri sadece bu thread'de yapılmalıdır
+
+2. **Fare Dinleme İş Parçacığı**:
+   - MouseListener._listen_mouse metodu ayrı bir thread'de çalışır
+   - Sürekli olarak fare durumunu kontrol eder
+   - Sinyal mekanizması ile ana thread'e tıklama olaylarını bildirir
+
+3. **Oynatma İş Parçacığı**:
+   - play_actions metodu ayrı bir thread'de çalışır
+   - Ana arayüz donmadan tıklama işlemlerini gerçekleştirir
+   - Oynatma bittiğinde özel bir olay (StatusUpdateEvent) ile ana thread'e bildirim gönderir
+
+## Hata Yönetimi
+
+1. **Genel Hata Kontrolü**:
+   - Kritik işlemler try-except blokları içine alınmıştır
+   - Hata durumunda konsola ayrıntılı bilgiler yazdırılır
+   - Kullanıcıya uygun mesaj kutuları gösterilir
+
+2. **Durum Kontrolü**:
+   - Kayıt veya oynatma durumuna göre işlem kısıtlamaları uygulanır
+   - Geçersiz durumlar için kullanıcıya uyarılar gösterilir
+
+3. **Dosya İşlemleri Güvenliği**:
+   - Dosya bulunmama, okuma/yazma hataları kontrol edilir
+   - Veri biçimi doğrulaması yapılır
+   - Yanlış profil adı veya format kontrolü yapılır
+
+## Klavye Kısayolları ve Etkileşim
+
+1. **Klavye Kısayolları**:
+   - **K**: Kaydı başlatır (`on_key_k_pressed`)
+   - **B**: Kaydı durdurur (`on_key_b_pressed`)
+   - **C**: Oynatmayı başlatır (`on_key_c_pressed`)
+   - **ESC**: Oynatmayı veya kaydı durdurur (`on_esc_pressed`)
+
+2. **Çift Basma Kontrolü**:
+   - Her tuş basma arasında minimum 500ms bekleme kontrolü yapılır
+   - Son basma zamanları kaydedilir ve kontrol edilir
+
+## Kullanıcı Arayüzü Detayları
+
+1. **Ana Pencere Bileşenleri**:
+   - Üst Bölge: Durum etiketi, koordinat bilgisi, profil bilgisi
+   - Orta Bölge: Kayıt butonları, tıklama listesi 
+   - Alt Bölge: Profil işlemleri, oynatma seçenekleri, oynatma butonları
+
+2. **Dinamik Güncellemeler**:
+   - Tıklama kaydedildikçe liste otomatik güncellenir
+   - İşlem durumuna göre durum etiketi güncellenir
+   - Profil değişikliklerinde ilgili etiketler güncellenir
+
+3. **Otomatik Kapanan Bildirimler**:
+   - İşlem gerçekleştiğinde kullanıcıya kısa süreli bilgi mesajları gösterilir
+   - 2 saniye sonra otomatik kapanır
+   - Geri sayım metni içerir
+
+## Kullanım Talimatları
+
+1. **Tıklama Kaydı**:
+   - "Tıklamaları Kaydet" butonuna basın veya "K" tuşuna basın
+   - İstediğiniz ekran konumlarında sol veya sağ tıklamalar yapın
+   - "Kaydı Durdur" butonuna basın veya "B" tuşuna basın
+   - Kaydedilen tıklamalar listede görünecektir
+
+2. **Profil Kaydetme**:
+   - "Profil Adı" alanına bir isim girin
+   - "Kaydet" butonuna basın
+   - Profil settings.ini dosyasına kaydedilecektir
+
+3. **Profil Yükleme**:
+   - "Profil Adı" alanına var olan bir profil adı girin
+   - "Yükle" butonuna basın
+   - İlgili profildeki tıklamalar yüklenecektir
+
+4. **Otomatik Tıklama**:
+   - İsterseniz "Sürekli tekrarla" seçeneğini işaretleyin
+   - İsterseniz "Kaydedilen tıklama gecikmelerini kullan" seçeneğini işaretleyin
+   - "Oynat" butonuna basın veya "C" tuşuna basın
+   - Tıklamalar otomatik olarak tekrarlanacaktır
+   - Durdurmak için "Durdur" butonuna basın veya "ESC" tuşuna basın
+
+## Dosya Yapısı
+
+1. **point_recorder.py**: Ana uygulama kodu, tüm sınıflar ve işlevler
+2. **settings.ini**: Profil ayarları ve tıklama verileri
+3. **requirements.txt**: Gerekli Python kütüphaneleri
+4. **tiklamalar.txt**: Algoritma ve kullanım hakkında ayrıntılı bilgiler
+5. **README.md**: Proje hakkında genel bilgiler
+6. **LICENSE**: MIT lisans bilgileri
+
+## Teknik Notlar
+
+1. **Güvenlik**:
+   - PyAutoGUI'nin failsafe modu devre dışı bırakılmıştır (pyautogui.FAILSAFE = False)
+   - Otomatik tıklama sırasında fareyi kullanmaktan kaçının
+
+2. **Performans**:
+   - Fare dinleme döngüsü 0.05 saniye gecikme ile çalışır
+   - CPU kullanımını optimize etmek için çeşitli beklemeler eklenmiştir
+   - Klavye dinleme 0.1 saniye aralıklarla kontrol edilir
+
+3. **Uyumluluk**:
+   - Windows işletim sistemlerine özgüdür (win32api kullanımı nedeniyle)
+   - Python 3.6 veya üstü gerektirir
+   - Tüm gerekli kütüphaneler requirements.txt dosyasında belirtilmiştir
+
+## Geliştirme ve Özelleştirme Önerileri
+
+Bu uygulama şu alanlarda genişletilebilir:
+
+1. **Ek Fare Eylemleri**:
+   - Orta tıklama desteği
+   - Fare tekerleği kaydırma hareketleri
+   - Sürükleme ve bırakma hareketleri
+
+2. **Gelişmiş Otomasyon**:
+   - Klavye girişi kaydı ve oynatma
+   - Koşullu eylemler (belirli bir pikselin rengine göre)
+   - Görüntü tanıma tabanlı tıklama
+
+3. **Arayüz İyileştirmeleri**:
+   - Gelişmiş profil yönetimi
+   - Tıklama dizisi düzenleme araçları
+   - Daha ayrıntılı istatistikler ve görselleştirmeler
+
+4. **Çoklu Platformlarda Çalışma**:
+   - Linux ve macOS desteği ekleme
+   - İşletim sistemine göre otomatik algılama ve adaptasyon
+
+5. **İleri Düzey Profil Yönetimi**:
+   - Profilleri kategorilere ayırma
+   - Profil arama ve filtreleme
+   - Profil içeri/dışarı aktarma
+
