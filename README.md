@@ -7,7 +7,7 @@ Bu makro programı, Knight Online oyununda parti üyelerinin can barlarını oto
 - **Parti Üyelerinin Can Barlarını İzleme**: Ekranın sağ kısmında bulunan parti can barlarını sürekli kontrol eder
 - **Otomatik İyileştirme**: Canı belirlenen eşik değerinin altına düşen üyeleri otomatik olarak iyileştirir
 - **Çoklu İş Parçacığı**: Tüm işlemler paralel ve sistem kaynaklarını yormayacak şekilde çalışır
-- **Özelleştirilebilir İyileştirme Eşiği**: Kullanıcı can eşik değerini (örn. %40) belirleyebilir
+- **Özelleştirilebilir İyileştirme Eşiği**: Kullanıcı can eşik değerini (örn %40) belirleyebilir
 - **Tıklama Koordinatları**: Tiklamalar.txt dosyasından okunan koordinatlarda otomatik tıklamalar yapabilir
 
 ## Gereksinimler
