@@ -1,0 +1,21 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+
+# PyInstaller çıktıları (101 MB — GitHub 100 MB dosya limitini aşar, gereksiz)
+dist/
+build/
+*.spec
+
+# Test artıkları
+tools/tests/_app_test.ini
+tools/tests/_yakalama/
+_yakalama/
+
+# Editör / OS
+.vscode/
+.idea/
+*.swp
+Thumbs.db
+desktop.ini
