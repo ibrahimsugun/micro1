@@ -12,7 +12,10 @@ import os
 
 from PyQt5.QtCore import QTimer, Qt, pyqtSignal
 from PyQt5.QtWidgets import (
+    QCheckBox,
+    QFileDialog,
     QHBoxLayout,
+    QListWidget,
     QLabel,
     QLineEdit,
     QMessageBox,
@@ -34,9 +37,11 @@ class LoginTab(QWidget):
     hotkeyChanged = pyqtSignal(str)
 
     def __init__(self, store, input_service, app_state, hotkey_service,
-                 title_provider, parent=None):
+                 title_provider, dc_guard=None, parent=None):
         super().__init__(parent)
         self.store = store
+        self.guard = dc_guard
+        self.store.load()          # DC kartı kayıtlı seçenekleri kurulurken okur
         self._title_provider = title_provider
         self.typer = LoginTyper(input_service, app_state, self)
         self._countdown = 0
@@ -124,6 +129,9 @@ class LoginTab(QWidget):
             action,
         ))
         root.addWidget(action)
+        if dc_guard is not None:
+            root.addWidget(self._build_dc_card())
+        self._root = root
         root.addStretch(1)
 
         self.save_button.clicked.connect(self._save)
@@ -135,6 +143,190 @@ class LoginTab(QWidget):
         self.typer.finished.connect(self._on_finished)
 
         self._load()
+
+    def add_card(self, widget):
+        """Sondaki boşluktan ÖNCE kart ekler (ana pencere Telegram kartını koyar)."""
+        self._root.insertWidget(self._root.count() - 1, widget)
+
+    def recent_log(self, count=10):
+        if not hasattr(self, "dc_log"):
+            return []
+        total = self.dc_log.count()
+        return [self.dc_log.item(i).text() for i in range(max(0, total - count), total)]
+
+    def dc_status_text(self) -> str:
+        return self.dc_status.text() if hasattr(self, "dc_status") else ""
+
+    # ------------------------------------------------------------------ DC
+    def _build_dc_card(self):
+        card = Card("DC koruması", self)
+        self.dc_alarm_check = QCheckBox("DC alarmı", card)
+        self.dc_alarm_check.setToolTip(
+            "Karakter oyundan düşünce alarm çalar.\n\n"
+            "Ekranın ortasındaki 'Disconnected from server' çerçevesi "
+            "algılanır, log'a yazılır, master kapatılır ve çerçevedeki "
+            "Confirm düğmesine basılır. Önce son bilinen konuma tıklanır; "
+            "10 sn sonra çerçeve hâlâ duruyorsa düğme ekranda aranıp tekrar "
+            "tıklanır."
+        )
+        self.relogin_check = QCheckBox("Yeniden gir", card)
+        self.relogin_check.setToolTip(
+            "Karakter düşünce otomatik yeniden giriş:\n"
+            "Confirm → oyunun kapanması 10 sn beklenir → Launcher açılır → "
+            "10 sn → START → oyunun açılması 1 dk beklenir → ID kutusuna "
+            "tıklanır → hızlı giriş (ID, TAB, şifre, ENTER) → OTP ekranı "
+            "gelince 'bip bip' çalar ve bekler.\n\n"
+            "Program YÖNETİCİ olarak çalışmalıdır."
+        )
+        checks = QHBoxLayout()
+        checks.setContentsMargins(0, 0, 0, 0)
+        checks.setSpacing(16)
+        checks.addWidget(self.dc_alarm_check)
+        checks.addWidget(self.relogin_check)
+        checks.addStretch(1)
+        card.add_layout(checks)
+
+        card.add(field_label("Launcher dosyası", card))
+        path_row = QHBoxLayout()
+        path_row.setContentsMargins(0, 0, 0, 0)
+        path_row.setSpacing(6)
+        self.launcher_edit = QLineEdit(card)
+        self.launcher_edit.setPlaceholderText("Launcher.exe yolu")
+        self.launcher_edit.setToolTip("Yeniden girişte açılacak oyun launcher'ı.")
+        self.launcher_browse = QPushButton("Seç…", card)
+        self.launcher_browse.setFixedWidth(64)
+        path_row.addWidget(self.launcher_edit, 1)
+        path_row.addWidget(self.launcher_browse)
+        card.add_layout(path_row)
+
+        buttons = QHBoxLayout()
+        buttons.setContentsMargins(0, 0, 0, 0)
+        buttons.setSpacing(6)
+        self.relogin_now_button = QPushButton("Yeniden girişi şimdi dene", card)
+        self.relogin_now_button.setToolTip(
+            "DC beklemeden zinciri launcher adımından başlatır (test için). "
+            "Oyun açıksa önce kapanması beklenir; kapanmazsa iptal edilir."
+        )
+        self.dc_cancel_button = QPushButton("Durdur", card)
+        self.dc_cancel_button.setObjectName("danger")
+        self.dc_cancel_button.setFixedWidth(70)
+        self.dc_cancel_button.setEnabled(False)
+        buttons.addWidget(self.relogin_now_button, 1)
+        buttons.addWidget(self.dc_cancel_button)
+        card.add_layout(buttons)
+
+        self.dc_status = QLabel("İzleme kapalı", card)
+        self.dc_status.setWordWrap(True)
+        card.add(self.dc_status)
+
+        card.add(field_label("Log", card))
+        self.dc_log = QListWidget(card)
+        self.dc_log.setMinimumHeight(110)
+        self.dc_log.setWordWrap(True)
+        card.add(self.dc_log)
+        card.add(hint_label(
+            "Log ayrıca program klasöründeki dc_log.txt dosyasına yazılır.", card))
+
+        opts = self.store.options
+        self.dc_alarm_check.setChecked(bool(opts.get("dc_alarm", False)))
+        self.relogin_check.setChecked(bool(opts.get("relogin", False)))
+        self.launcher_edit.setText(str(opts.get("launcher_path", "")))
+        self._push_dc_options()
+        self._refresh_dc_idle()
+
+        self.dc_alarm_check.toggled.connect(self._on_dc_option)
+        self.relogin_check.toggled.connect(self._on_dc_option)
+        self.launcher_edit.editingFinished.connect(self._on_dc_option)
+        self.launcher_browse.clicked.connect(self._browse_launcher)
+        self.relogin_now_button.clicked.connect(self._relogin_now)
+        self.dc_cancel_button.clicked.connect(self.guard.cancel)
+        self.guard.logLine.connect(self._append_log)
+        self.guard.status.connect(self._on_dc_status)
+        self.guard.busyChanged.connect(self._on_dc_busy)
+        self.guard.optionsChanged.connect(self._on_guard_options)
+        return card
+
+    def _push_dc_options(self):
+        pos = self.store.options.get("confirm_pos")
+        self.guard.set_options(
+            self.dc_alarm_check.isChecked(), self.relogin_check.isChecked(),
+            self.launcher_edit.text().strip(),
+            tuple(pos) if isinstance(pos, (list, tuple)) and len(pos) == 2 else None,
+        )
+
+    def _on_dc_option(self, *_):
+        self._push_dc_options()
+        try:
+            self.store.save_options(
+                dc_alarm=self.dc_alarm_check.isChecked(),
+                relogin=self.relogin_check.isChecked(),
+                launcher_path=self.launcher_edit.text().strip(),
+            )
+        except Exception as exc:
+            self._on_dc_status("Ayar kaydedilemedi: {}".format(exc), "err")
+            return
+        if self.guard.busy():
+            return
+        if self.relogin_check.isChecked():
+            problems = []
+            if not self.store.has_account():
+                problems.append("kayıtlı hesap yok")
+            path = self.launcher_edit.text().strip()
+            if not path or not os.path.isfile(path):
+                problems.append("Launcher dosyası seçilmedi / bulunamadı")
+            if problems:
+                self._on_dc_status(
+                    "Yeniden gir için: " + ", ".join(problems) + ".", "err")
+                return
+        self._refresh_dc_idle()
+
+    def _refresh_dc_idle(self):
+        if self.dc_alarm_check.isChecked() or self.relogin_check.isChecked():
+            self._on_dc_status("İzleniyor — DC olursa: {}.".format(
+                "yeniden girilecek" if self.relogin_check.isChecked()
+                else "alarm + Confirm"), "ok")
+        else:
+            self._on_dc_status("İzleme kapalı", "idle")
+
+    def _browse_launcher(self):
+        start = os.path.dirname(self.launcher_edit.text().strip()) or ""
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Launcher'ı seç", start, "Programlar (*.exe);;Tüm dosyalar (*)")
+        if path:
+            self.launcher_edit.setText(os.path.normpath(path))
+            self._on_dc_option()
+
+    def _relogin_now(self):
+        if not self.store.has_account():
+            self._on_dc_status("Önce hesabı kaydet.", "err")
+            return
+        path = self.launcher_edit.text().strip()
+        if not path or not os.path.isfile(path):
+            self._on_dc_status("Önce Launcher dosyasını seç.", "err")
+            return
+        self._push_dc_options()
+        self.guard.relogin_now()
+
+    def _append_log(self, line):
+        self.dc_log.addItem(line)
+        while self.dc_log.count() > 200:
+            self.dc_log.takeItem(0)
+        self.dc_log.scrollToBottom()
+
+    def _on_dc_status(self, text, kind="idle"):
+        color = {"ok": GREEN, "warn": AMBER, "err": RED}.get(kind, MUTED)
+        self.dc_status.setText(text)
+        self.dc_status.setStyleSheet("color: {}; font-weight: 600;".format(color))
+
+    def _on_dc_busy(self, busy):
+        self.dc_cancel_button.setEnabled(busy)
+        self.relogin_now_button.setEnabled(not busy)
+
+    def _on_guard_options(self, values):
+        try:
+            self.store.save_options(**values)
+        except Exception:
+            pass
 
     # ------------------------------------------------------------------ veri
     def _load(self):
@@ -292,3 +484,5 @@ class LoginTab(QWidget):
     def shutdown(self):
         self._count_timer.stop()
         self.typer.cancel()
+        if self.guard is not None:
+            self.guard.stop()

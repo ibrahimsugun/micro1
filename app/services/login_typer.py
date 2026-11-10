@@ -218,35 +218,42 @@ class LoginTyper(QObject):
 
     def _run(self, username, password, hwnd):
         try:
-            if hwnd:
-                self.status.emit("Oyun penceresi öne alınıyor…")
-                if not window_capture.set_foreground(hwnd, timeout=1.0):
-                    raise LoginAborted(
-                        "Oyun penceresi öne alınamadı. Oyun yönetici olarak "
-                        "çalışıyorsa programı da yönetici olarak başlat."
-                    )
-                time.sleep(random.uniform(0.25, 0.40))
-            layout = keyboard_layout(hwnd)
-            bad = untypable_chars(username + password, layout)
-            if bad:
-                raise LoginAborted(
-                    "Şu karakterler mevcut klavye düzeninde yazılamıyor: {}".format(
-                        " ".join(bad))
-                )
-            with self._input.exclusive():
-                self.status.emit("Kullanıcı adı yazılıyor…")
-                self._type_text(username, layout, hwnd)
-                self._sleep(field_wait(), hwnd)
-                self.status.emit("TAB")
-                self._tap(SC_TAB, VK_TAB, hwnd)
-                self._sleep(random.uniform(0.25, 0.45), hwnd)
-                self.status.emit("Şifre yazılıyor…")
-                self._type_text(password, layout, hwnd)
-                self._sleep(field_wait(), hwnd)
-                self.status.emit("ENTER")
-                self._tap(SC_ENTER, VK_RETURN, hwnd)
+            self.type_login(username, password, hwnd)
             self.finished.emit(True, "Giriş bilgileri gönderildi.")
         except LoginAborted as exc:
             self.finished.emit(False, str(exc))
         except Exception as exc:                         # pragma: no cover
             self.finished.emit(False, "Beklenmeyen hata: {}".format(exc))
+
+    def type_login(self, username, password, hwnd):
+        """Senkron giriş dizisi (yeniden giriş zinciri de bunu çağırır).
+
+        Hata durumunda LoginAborted fırlatır.
+        """
+        if hwnd:
+            self.status.emit("Oyun penceresi öne alınıyor…")
+            if not window_capture.set_foreground(hwnd, timeout=1.0):
+                raise LoginAborted(
+                    "Oyun penceresi öne alınamadı. Oyun yönetici olarak "
+                    "çalışıyorsa programı da yönetici olarak başlat."
+                )
+            time.sleep(random.uniform(0.25, 0.40))
+        layout = keyboard_layout(hwnd)
+        bad = untypable_chars(username + password, layout)
+        if bad:
+            raise LoginAborted(
+                "Şu karakterler mevcut klavye düzeninde yazılamıyor: {}".format(
+                    " ".join(bad))
+            )
+        with self._input.exclusive():
+            self.status.emit("Kullanıcı adı yazılıyor…")
+            self._type_text(username, layout, hwnd)
+            self._sleep(field_wait(), hwnd)
+            self.status.emit("TAB")
+            self._tap(SC_TAB, VK_TAB, hwnd)
+            self._sleep(random.uniform(0.25, 0.45), hwnd)
+            self.status.emit("Şifre yazılıyor…")
+            self._type_text(password, layout, hwnd)
+            self._sleep(field_wait(), hwnd)
+            self.status.emit("ENTER")
+            self._tap(SC_ENTER, VK_RETURN, hwnd)

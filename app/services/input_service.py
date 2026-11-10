@@ -327,6 +327,31 @@ class InputService:
                     pyautogui.click(x, y)
                 return True
 
+    def click_direct(self, x: int, y: int) -> bool:
+        """Yeniden giriş zinciri için sol tık: odak devri YAPILMAZ.
+
+        Zincir hedef pencereyi kendisi öne alır; arka plan modunun kayıtlı
+        HWND'si o sırada ölü olabilir (oyun kapandı), _target_focus'a takılmasın.
+        Oyun yönetici olarak çalışıyor ve biz değilsek Windows SetCursorPos'u
+        reddeder → False döner (istisna yukarı taşmaz).
+        """
+        if not self._state.input_allowed():
+            return False
+        x, y = int(x), int(y)
+        with self._lock:
+            try:
+                if WIN32_AVAILABLE:
+                    win32api.SetCursorPos((x, y))
+                    time.sleep(random.uniform(0.04, 0.09))
+                    win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN, x, y, 0, 0)
+                    time.sleep(random.uniform(0.05, 0.11))
+                    win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, x, y, 0, 0)
+                    return True
+                pyautogui.click(x, y)
+                return True
+            except Exception:
+                return False
+
     def move_to(self, x: int, y: int) -> bool:
         if not self._state.input_allowed():
             return False

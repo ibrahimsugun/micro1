@@ -48,6 +48,7 @@ class CredentialStore:
         self.username = ""
         self.password = ""
         self.hotkey = ""
+        self.options = {}          # DC koruması: tikler, launcher yolu, Confirm konumu
         self.error = ""
 
     @property
@@ -66,6 +67,8 @@ class CredentialStore:
                 data = json.load(handle)
             self.username = str(data.get("username", ""))
             self.hotkey = str(data.get("hotkey", ""))
+            options = data.get("options", {})
+            self.options = options if isinstance(options, dict) else {}
             self.password = _unprotect(data.get("password", "")) if DPAPI_AVAILABLE else ""
             return True
         except Exception as exc:
@@ -85,6 +88,7 @@ class CredentialStore:
             "username": self.username,
             "password": _protect(self.password),
             "hotkey": self.hotkey,
+            "options": self.options,
         }
         tmp = self.path + ".tmp"
         with open(tmp, "w", encoding="utf-8") as handle:
@@ -96,8 +100,31 @@ class CredentialStore:
         self.hotkey = hotkey or ""
         self.save(self.username, self.password, self.hotkey)
 
+    def save_options(self, **values):
+        """DC koruması ayarlarını günceller (şifreye dokunmadan)."""
+        self.options.update(values)
+        self.save(self.username, self.password, self.hotkey)
+
+    def set_secret(self, key, value):
+        """Gizli değeri (ör. Telegram token) DPAPI ile şifreleyip options'a yazar."""
+        if not DPAPI_AVAILABLE:
+            raise RuntimeError("Windows şifreleme (DPAPI) kullanılamıyor.")
+        self.save_options(**{key + "_enc": _protect(value or "")})
+
+    def get_secret(self, key) -> str:
+        data = self.options.get(key + "_enc", "")
+        if not data or not DPAPI_AVAILABLE:
+            return ""
+        try:
+            return _unprotect(data)
+        except Exception:
+            return ""
+
     def clear(self):
+        """Hesabı siler; kısayol ve DC ayarları korunur."""
         self.username = ""
         self.password = ""
         if os.path.exists(self.path):
             os.remove(self.path)
+        if self.hotkey or self.options:
+            self.save("", "", self.hotkey)

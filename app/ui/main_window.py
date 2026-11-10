@@ -47,6 +47,8 @@ from ..constants import (
     MODULE_POT,
 )
 from ..services.credential_store import CredentialStore
+from ..services.dc_guard import DcGuard
+from ..services.telegram_service import TelegramService
 from ..services.hotkey_service import action_key_conflicts, display_name
 from ..services.screen_scanner import MODE_SCREEN, MODE_WINDOW
 from .live_view_window import LiveViewWindow
@@ -62,6 +64,7 @@ from .theme import GREEN, GREEN_SOFT, MUTED, RED, RED_SOFT, TEXT
 from .widgets.card import Card, field_label, field_row
 from .widgets.common import HotkeyButton, PercentSlider, StatusChip
 from .widgets.nav_tabs import NavTabs
+from .widgets.telegram_card import TelegramCard
 
 PANEL_WIDTH = 340
 PANEL_HEIGHT = 660
@@ -204,10 +207,24 @@ class MainWindow(QWidget):
         self.credentials = CredentialStore(
             os.path.dirname(os.path.abspath(self.settings.path))
         )
+        self.dc_guard = DcGuard(
+            self.ctx.input, self.ctx.state, self.credentials,
+            self.window_guard.title,
+            os.path.dirname(os.path.abspath(self.settings.path)), self,
+        )
         self.login_tab = LoginTab(
             self.credentials, self.ctx.input, self.ctx.state, self.hotkeys,
-            lambda: self.window_edit.text().strip(), self,
+            lambda: self.window_edit.text().strip(), self.dc_guard, self,
         )
+        self.dc_guard.dcDetected.connect(self._on_disconnected)
+        self.dc_guard.start()
+
+        self.telegram = TelegramService(parent=self)
+        self.telegram_card = TelegramCard(self.credentials, self.telegram, self)
+        self.login_tab.add_card(self.telegram_card)
+        self.dc_guard.notify.connect(self._tg_notify)
+        self.telegram.commandReceived.connect(self._on_tg_command)
+        self.telegram.textReceived.connect(self._on_tg_text)
 
         self.general_tab.add_footer(self.uptime_label)
         self.general_tab.add_footer(self.settings_box)
@@ -532,6 +549,7 @@ class MainWindow(QWidget):
         if name == "app::panic":
             self.manager.panic()
             self.login_tab.typer.cancel()
+            self.dc_guard.cancel()
             return
         if name == "app::login":
             self.login_tab.login_from_hotkey()
@@ -771,6 +789,72 @@ class MainWindow(QWidget):
 
     def _on_death(self):
         self._set_banner("ÖLÜM KORUMASI — modüller duraklatıldı", RED)
+
+    def _on_disconnected(self):
+        """Oyundan düşüldü: modüller launcher/giriş ekranına tuş basmasın."""
+        self.manager.set_master(False)
+        self._set_banner("DC — oyundan düşüldü", RED)
+
+    # ================================================================ telegram
+    TG_HELP = (
+        "Komutlar:
+"
+        "/durum — master, DC izleme, HP/MP
+"
+        "/log — son 10 log satırı
+"
+        "/durdur — süren yeniden giriş zincirini durdur, master'ı kapat
+"
+        "/panik — HER ŞEYİ durdur (yalnız panelden master ile açılır)
+"
+        "/yardim — bu liste"
+    )
+
+    def _tg_notify(self, text):
+        if self.telegram_card.notify_enabled():
+            self.telegram.send(text)
+
+    def _tg_status_text(self):
+        snap = self.ctx.live.snapshot()
+        hp, mp = snap.get("hp_percent"), snap.get("mp_percent")
+        lines = [
+            "📊 Durum",
+            "Master: " + self._master_text().replace("MASTER · ", ""),
+            "DC izleme: " + (self.login_tab.dc_status_text() or "—"),
+            "HP: {} · MP: {}".format(
+                "—" if hp is None else "%{:.0f}".format(hp),
+                "—" if mp is None else "%{:.0f}".format(mp)),
+            "Oyun penceresi: " + ("bulundu" if self.dc_guard._game_hwnd() else "yok"),
+        ]
+        return "
+".join(lines)
+
+    def _on_tg_command(self, command, _args):
+        if command in ("/yardim", "/help", "/start"):
+            self.telegram.send(self.TG_HELP)
+        elif command == "/durum":
+            self.telegram.send(self._tg_status_text())
+        elif command == "/log":
+            lines = self.login_tab.recent_log(10)
+            self.telegram.send("🧾 Son log:
+" + "
+".join(lines) if lines else "Log boş.")
+        elif command == "/durdur":
+            self.dc_guard.cancel()
+            self.manager.set_master(False)
+            self.telegram.send("⏹ Yeniden giriş zinciri durduruldu, master kapatıldı.")
+        elif command == "/panik":
+            self.manager.panic()
+            self.login_tab.typer.cancel()
+            self.dc_guard.cancel()
+            self.telegram.send("🛑 PANİK: her şey durduruldu. Yalnız panelden master ile açılır.")
+        else:
+            self.telegram.send("Bilinmeyen komut: {}
+
+{}".format(command, self.TG_HELP))
+
+    def _on_tg_text(self, _text):
+        self.telegram.send("Komutları görmek için /yardim yaz.")
 
     def _on_recovered(self):
         self._set_banner("")
@@ -1070,6 +1154,7 @@ class MainWindow(QWidget):
 
         self.poll_timer.stop()
         self.login_tab.shutdown()
+        self.telegram.stop()
         self.calibration_tab.hide_frames()
         self.overlay.close()
         self.live_view.stop()
