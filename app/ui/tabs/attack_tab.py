@@ -110,10 +110,12 @@ class AttackTab(QWidget):
         ))
 
         self.no_z_check = QCheckBox("Mob ölmeden Z yapma", extra_box)
-        self.no_z_check.setToolTip("Açıkken hedef barı boşalmadan yeni Z basılmaz.")
+        self.no_z_check.setToolTip(
+            "Açıkken hedef barı boşalmadan (mob ölmeden) yeni Z basılmaz.\n"
+            "Kapalıyken mob'a vururken de belirli aralıklarla Z basılır.")
         extra_box.add(self.no_z_check)
         extra_box.add(hint_label(
-            "Hedef yokken Z aralığı: {}-{} ms (rastgele).".format(Z_MIN_MS, Z_MAX_MS),
+            "Z aralığı: {}-{} ms (rastgele).".format(Z_MIN_MS, Z_MAX_MS),
             extra_box,
         ))
         root.addWidget(extra_box)

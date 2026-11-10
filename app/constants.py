@@ -40,8 +40,8 @@ ATTACK_RANDOM_MAX_DEFAULT = 531
 ATTACK_NATURAL_JITTER = 0.10   # rastgele tik kapalıyken bile ±%10 sapma
 R_ATTACK_INTERVAL_MS = 1000    # bağımsız sabit R sayacı
 RPR_REPEAT_MS = 5000           # ikon duruyorsa tekrar denemeden önce
-Z_MIN_MS = 789                 # hedef yokken Z aralığı alt sınırı (sıradaki mobu erken seç)
-Z_MAX_MS = 1437                # hedef yokken Z aralığı üst sınırı
+Z_MIN_MS = 647                 # Z aralığı alt sınırı (sıradaki mobu erken seç)
+Z_MAX_MS = 1007                # Z aralığı üst sınırı
 HEAL_MEMBER_COOLDOWN_MS = 2000 # aynı parti üyesine tekrar heal beklemesi
 DEATH_HOLD_SECONDS = 5.0       # HP %0 / bar yok bu süre boyunca sürerse ölüm
 DEATH_RECOVER_PERCENT = 5.0    # bu yüzdenin üstüne çıkınca ölüm durumu kalkar
@@ -63,7 +63,6 @@ LOOP_MS_MAX = 2000
 # --- Görüntü işleme ---
 COLOR_TOLERANCE = 30           # referans renge tolerans (kanal başına)
 TARGET_PRESENT_RATIO = 2.0     # target_bar bu oranın üstündeyse hedef var
-MOB_ALIVE_RATIO = 2.0          # "mob ölmeden Z yapmama" için bar boş eşiği
 PRESENCE_STD_MIN = 8.0         # boş satır / gerçek üye ayrımı (std sapma)
 TEMPLATE_MATCH_THRESHOLD = 0.85  # eski şablon kayıtları için (geriye dönük)
 # RPR: yanık silah RENKTEN tanınır (şekil/yön/hangi el fark etmez).

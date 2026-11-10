@@ -19,8 +19,8 @@ from PyQt5.QtWidgets import (
 from ..theme import FAINT
 from .common import ActionKeyCombo, PageCombo
 
-BUFF_KEY_W = 40
-BUFF_PAGE_W = 48
+BUFF_KEY_W = 46
+BUFF_PAGE_W = 56
 
 
 class BuffRowWidget(QWidget):

@@ -22,6 +22,7 @@ python -m PyInstaller --noconfirm --clean ^
     --windowed ^
     --name "BirlesikKO" ^
     --add-binary "interception.dll;." ^
+    --add-data "app/ui/assets;app/ui/assets" ^
     --hidden-import pynput.keyboard._win32 ^
     --hidden-import pynput.mouse._win32 ^
     main.py

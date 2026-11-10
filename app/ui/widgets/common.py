@@ -28,10 +28,10 @@ from ..theme import (
 )
 
 # Satır bileşenlerinin ortak genişlikleri
-KEY_W = 50       # tuş kutusu (yalnız 1-0 rakamları)
-PAGE_W = 62      # F sayfası kutusu
+KEY_W = 54       # tuş kutusu (yalnız 1-0 rakamları)
+PAGE_W = 66      # F sayfası kutusu
 PCT_W = 38       # yüzde etiketi
-PCT_SPIN_W = 56  # yüzde eşiği kutusu
+PCT_SPIN_W = 62  # yüzde eşiği kutusu
 
 
 class ActionKeyCombo(QComboBox):
@@ -238,14 +238,20 @@ class StatusChip(QLabel):
         super().__init__(parent)
         self.caption = caption
         self.setAlignment(Qt.AlignCenter)
-        self.setMinimumHeight(22)
+        self.setMinimumHeight(40)
+        self.setTextFormat(Qt.RichText)
         self.set_value("—", TEXT)
 
     def set_value(self, text, color=TEXT, soft="#e4e9f1"):
-        self.setText("{} {}".format(self.caption, text))
+        # İki katlı rozet: küçük soluk başlık + büyük değer (bakışta okunur)
+        self.setText(
+            "<div style='font-size:10px; font-weight:700; color:{muted};'>{cap}</div>"
+            "<div style='font-size:13px; font-weight:800;'>{val}</div>".format(
+                muted=FAINT, cap=self.caption.upper(), val=text)
+        )
         self.setStyleSheet(
-            "background-color: {}; color: {}; border-radius: 5px;"
-            "font-size: 11px; font-weight: 700; padding: 3px 4px;".format(soft, color)
+            "background-color: {}; color: {}; border-radius: 9px;"
+            "border: 1px solid rgba(0,0,0,18); padding: 3px 2px;".format(soft, color)
         )
 
 

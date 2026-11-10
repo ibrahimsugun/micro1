@@ -5,12 +5,14 @@ Yerleşim (üstten alta; ilk dört blok her sekmede sabit kalır):
     [ HP ][ MP ][ Hedef ][ RPR ]       canlı şerit
     [☐ Üstte tut] [☐ Bip] [☐ Tepsiye küçült]
     [Şeffaflık ───●─── %100]
-    [ Genel | Atak | Priest | Diğer | Kalib. | Bilgi ]
+    [ Genel | Atak | Priest | Diğer ]  iki satırlı sekme ızgarası
+    [ Kalib. | Bilgi | Giriş ]
     ( sekme içeriği — kartlar, kaydırılabilir )
 
 "Program ayarları" bloğu Genel sekmesinin altına taşınır (kullanıcı kararı).
 """
 
+import os
 import time
 
 from PyQt5.QtCore import QTimer, Qt
@@ -30,7 +32,6 @@ from PyQt5.QtWidgets import (
     QScrollArea,
     QStyle,
     QSystemTrayIcon,
-    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -45,6 +46,7 @@ from ..constants import (
     MODULE_LABELS,
     MODULE_POT,
 )
+from ..services.credential_store import CredentialStore
 from ..services.hotkey_service import action_key_conflicts, display_name
 from ..services.screen_scanner import MODE_SCREEN, MODE_WINDOW
 from .live_view_window import LiveViewWindow
@@ -53,14 +55,16 @@ from .tabs.attack_tab import AttackTab
 from .tabs.calibration_tab import CalibrationTab
 from .tabs.general_tab import GeneralTab
 from .tabs.info_tab import InfoTab
+from .tabs.login_tab import LoginTab
 from .tabs.other_tab import OtherTab
 from .tabs.priest_tab import PriestTab
 from .theme import GREEN, GREEN_SOFT, MUTED, RED, RED_SOFT, TEXT
 from .widgets.card import Card, field_label, field_row
 from .widgets.common import HotkeyButton, PercentSlider, StatusChip
+from .widgets.nav_tabs import NavTabs
 
-PANEL_WIDTH = 310
-PANEL_HEIGHT = 580
+PANEL_WIDTH = 340
+PANEL_HEIGHT = 660
 OPACITY_MIN = 25        # pencere tamamen görünmez olmasın
 NEUTRAL_SOFT = "#e4e9f1"
 
@@ -108,8 +112,8 @@ class MainWindow(QWidget):
     # ================================================================== arayüz
     def _build_ui(self):
         root = QVBoxLayout(self)
-        root.setContentsMargins(10, 10, 10, 10)
-        root.setSpacing(8)
+        root.setContentsMargins(12, 12, 12, 12)
+        root.setSpacing(9)
 
         # --- ana anahtar ----------------------------------------------------
         master_row = QHBoxLayout()
@@ -124,7 +128,8 @@ class MainWindow(QWidget):
 
         self.compact_button = QPushButton("⤡", self)
         self.compact_button.setObjectName("iconButton")
-        self.compact_button.setFixedWidth(34)
+        self.compact_button.setFixedWidth(44)
+        self.compact_button.setMinimumHeight(46)
         self.compact_button.setToolTip(
             "Kompakt mod: yalnızca master düğmesi kalır. Aynı düğmeyle geri "
             "dönersin."
@@ -139,7 +144,7 @@ class MainWindow(QWidget):
         self.chips_row = QWidget(self)
         chips = QHBoxLayout(self.chips_row)
         chips.setContentsMargins(0, 0, 0, 0)
-        chips.setSpacing(5)
+        chips.setSpacing(6)
         self.chip_hp = StatusChip("HP", self.chips_row)
         self.chip_mp = StatusChip("MP", self.chips_row)
         self.chip_target = StatusChip("Hedef", self.chips_row)
@@ -189,32 +194,35 @@ class MainWindow(QWidget):
         self._build_settings_box()
 
         # --- sekmeler -------------------------------------------------------
-        self.tabs = QTabWidget(self)
-        self.tabs.setToolTip(
-            "Genel: potlar · Atak: skill döngüsü · Priest: heal ve buff · "
-            "Diğer: tıklama kaydedici · Kalib.: bar kayıtları · "
-            "Bilgi: canlı değerler"
-        )
+        self.tabs = NavTabs(columns=4, parent=self)
         self.general_tab = GeneralTab(self.manager, self.hotkeys, self)
         self.attack_tab = AttackTab(self.manager, self.hotkeys, self)
         self.priest_tab = PriestTab(self.manager, self.hotkeys, self)
         self.other_tab = OtherTab(self.manager, self.hotkeys, self.recorder, self)
         self.calibration_tab = CalibrationTab(self.ctx, self.party, self)
         self.info_tab = InfoTab(self)
+        self.credentials = CredentialStore(
+            os.path.dirname(os.path.abspath(self.settings.path))
+        )
+        self.login_tab = LoginTab(
+            self.credentials, self.ctx.input, self.ctx.state, self.hotkeys,
+            lambda: self.window_edit.text().strip(), self,
+        )
 
         self.general_tab.add_footer(self.uptime_label)
         self.general_tab.add_footer(self.settings_box)
 
         self._scrolls = {}
-        for tab, caption in (
-            (self.general_tab, "Genel"),
-            (self.attack_tab, "Atak"),
-            (self.priest_tab, "Priest"),
-            (self.other_tab, "Diğer"),
-            (self.calibration_tab, "Kalib."),
-            (self.info_tab, "Bilgi"),
+        for tab, caption, tip in (
+            (self.general_tab, "Genel", "Potlar ve program ayarları"),
+            (self.attack_tab, "Atak", "Skill döngüsü"),
+            (self.priest_tab, "Priest", "Heal ve buff"),
+            (self.other_tab, "Diğer", "Tıklama kaydedici"),
+            (self.calibration_tab, "Kalibrasyon", "Bar kayıtları"),
+            (self.info_tab, "Bilgi", "Canlı değerler"),
+            (self.login_tab, "Hızlı Giriş", "Kayıtlı hesapla tek tuşla giriş"),
         ):
-            self.tabs.addTab(self._wrap_scroll(tab), caption)
+            self.tabs.addTab(self._wrap_scroll(tab), caption, tip)
         root.addWidget(self.tabs, 1)
 
         self._connect_ui()
@@ -318,6 +326,7 @@ class MainWindow(QWidget):
         self.window_edit.textChanged.connect(self._on_title_edited)
         self.info_tab.testKeyRequested.connect(self._send_test_key)
         self.master_hotkey.keyChanged.connect(lambda _: self._rebuild_bindings())
+        self.login_tab.hotkeyChanged.connect(lambda _: self._rebuild_bindings())
         self.panic_hotkey.keyChanged.connect(lambda _: self._rebuild_bindings())
         self.on_top_check.toggled.connect(self._on_top_toggled)
         self.overlay_check.toggled.connect(self._on_overlay_toggled)
@@ -456,6 +465,7 @@ class MainWindow(QWidget):
             "clicker::record": self.other_tab.record_hotkey.key(),
             "clicker::stop": self.other_tab.stop_hotkey.key(),
             "clicker::play": self.other_tab.play_hotkey.key(),
+            "app::login": self.login_tab.hotkey(),
         })
         self.hotkeys.set_bindings(bindings)
         self._check_conflicts(bindings)
@@ -521,6 +531,10 @@ class MainWindow(QWidget):
             return
         if name == "app::panic":
             self.manager.panic()
+            self.login_tab.typer.cancel()
+            return
+        if name == "app::login":
+            self.login_tab.login_from_hotkey()
             return
         if name.startswith("module::"):
             self._toggle_module_from_hotkey(name.split("::", 1)[1])
@@ -1055,6 +1069,7 @@ class MainWindow(QWidget):
                 self.save_settings()
 
         self.poll_timer.stop()
+        self.login_tab.shutdown()
         self.calibration_tab.hide_frames()
         self.overlay.close()
         self.live_view.stop()

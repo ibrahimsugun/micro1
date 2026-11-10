@@ -13,7 +13,6 @@ from ..constants import (
     CALIB_RPR,
     CALIB_TARGET,
     DEFAULT_LOOP_MS,
-    MOB_ALIVE_RATIO,
     MODULE_ATTACK,
     NO_PAGE,
     R_ATTACK_INTERVAL_MS,
@@ -122,10 +121,14 @@ class AttackModule(ModuleBase):
         if has_target:
             self._handle_skills(cfg, now)
             self._handle_r(cfg, now)
+            # "Mob olmeden Z yapma" kapaliyken vururken de Z araliklarla basilir
+            # (siradaki mob erken secilir); acikken mob olene kadar Z beklenir.
+            if not cfg.get("no_z_until_dead"):
+                self._handle_z(now)
             return
 
         # Hedef yok: skill dongusu ve R durur, yalniz Z ile hedef aranir.
-        self._handle_z(cfg, now, percent)
+        self._handle_z(now)
 
     # ------------------------------------------------------------------ parçalar
     def _handle_skills(self, cfg, now):
@@ -151,11 +154,8 @@ class AttackModule(ModuleBase):
         self.ctx.input.press_key("R")
         self._next_r_at = time.monotonic() + (R_ATTACK_INTERVAL_MS / 1000.0)
 
-    def _handle_z(self, cfg, now, percent):
+    def _handle_z(self, now):
         if now < self._next_z_at:
-            return
-        if cfg.get("no_z_until_dead") and percent > MOB_ALIVE_RATIO:
-            self._next_z_at = now + 0.1        # bar bosalana kadar bekle
             return
         self.ctx.input.press_key("Z")
         self._next_z_at = time.monotonic() + self._z_delay()

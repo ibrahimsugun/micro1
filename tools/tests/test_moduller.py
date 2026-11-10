@@ -312,8 +312,8 @@ def main():
     z_gaps = [(b - a) * 1000 for a, b in zip(z_stamps, z_stamps[1:])]
     check("Hedef yokken Z basildi", len(z_stamps) >= 2,
           "{} kez".format(len(z_stamps)))
-    check("Z araliklari 789-1437 ms bandinda",
-          bool(z_gaps) and all(750 <= g <= 1550 for g in z_gaps),
+    check("Z araliklari 647-1007 ms bandinda",
+          bool(z_gaps) and all(610 <= g <= 1120 for g in z_gaps),
           "araliklar=" + ", ".join("%.0f" % g for g in z_gaps))
     check("Hedef yokken skill basilmadi",
           not [p for p in fake_input.page_keys() if p[1] in ("4", "5")])
@@ -324,6 +324,18 @@ def main():
     dummy.target_check.setChecked(True)
     dummy.target_slider.setValue(100)
     pump(app, 3.0)
+
+    check("Tik kapaliyken hedef varken de Z basildi",
+          len(fake_input.stamps("key", "Z")) >= 2,
+          "{} kez".format(len(fake_input.stamps("key", "Z"))))
+
+    attack.set_config(dict(attack.config(), no_z_until_dead=True))
+    pump(app, 0.2)
+    z_before = len(fake_input.stamps("key", "Z"))
+    pump(app, 2.0)
+    check("Tik acikken hedef varken Z basilmadi (mob olmeden)",
+          len(fake_input.stamps("key", "Z")) == z_before,
+          "{} kez".format(len(fake_input.stamps("key", "Z")) - z_before))
     attack.set_enabled(False)
     attack.stop()
 

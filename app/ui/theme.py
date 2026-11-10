@@ -12,18 +12,18 @@ Tasarım kararları:
 """
 
 # ------------------------------------------------------------------ palet
-BG = "#f3f5f9"           # pencere zemini
+BG = "#eef1f7"           # pencere zemini
 CARD = "#ffffff"         # kart yüzeyi
 CARD_ALT = "#f8fafc"     # ikincil yüzey (satır zebra, pasif alan)
-BORDER = "#d5dbe6"       # ince ayraç
-BORDER_STRONG = "#b9c2d2"
-TEXT = "#161b24"         # ana metin
-MUTED = "#4d5765"        # ikincil metin (alan etiketleri, ipuçları)
+BORDER = "#d9dfea"       # ince ayraç
+BORDER_STRONG = "#bcc5d6"
+TEXT = "#111827"         # ana metin
+MUTED = "#475263"        # ikincil metin (alan etiketleri, ipuçları)
 FAINT = "#6a7480"        # üçüncül metin (bölüm başlığı, sıra no)
 
-ACCENT = "#2f6feb"       # vurgu (seçim, odak, birincil düğme)
-ACCENT_HOVER = "#2560d8"
-ACCENT_SOFT = "#e9f0fe"
+ACCENT = "#2563eb"       # vurgu (seçim, odak, birincil düğme)
+ACCENT_HOVER = "#1d4fd7"
+ACCENT_SOFT = "#e7efff"
 
 GREEN = "#0f7442"        # durum: çalışıyor / sağlam
 GREEN_SOFT = "#e6f6ed"
@@ -37,10 +37,26 @@ AMBER_SOFT = "#fdf3e2"
 FONT = '"Segoe UI", "Segoe UI Variable", sans-serif'
 
 # Kart içi standart ölçüler (yerleşim kodu da bunları kullanır)
-CARD_MARGIN = 10
+CARD_MARGIN = 11
 CARD_SPACING = 7
 ROW_SPACING = 6
-INPUT_HEIGHT = 26
+INPUT_HEIGHT = 28
+
+
+def _asset(name):
+    """Paket içi görsel yolu (PyInstaller onefile'da _MEIPASS altında)."""
+    import os
+    import sys
+
+    base = getattr(sys, "_MEIPASS", None)
+    if base:
+        path = os.path.join(base, "app", "ui", "assets", name)
+    else:
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", name)
+    return path.replace("\\", "/")
+
+
+CHECK_SVG = _asset("check.svg")
 
 
 APP_QSS = """
@@ -50,7 +66,7 @@ QWidget {{
     background-color: {bg};
     color: {text};
     font-family: {font};
-    font-size: 12px;
+    font-size: 13px;
 }}
 
 QToolTip {{
@@ -66,7 +82,7 @@ QToolTip {{
 QFrame#card {{
     background-color: {card};
     border: 1px solid {border};
-    border-radius: 9px;
+    border-radius: 12px;
 }}
 QFrame#cardFlat {{
     background-color: {card_alt};
@@ -74,19 +90,21 @@ QFrame#cardFlat {{
     border-radius: 8px;
 }}
 QLabel#sectionTitle {{
-    color: {faint};
+    color: {accent};
     font-size: 11px;
-    font-weight: 700;
-    padding: 0 2px;
+    font-weight: 800;
+    letter-spacing: 0.6px;
+    padding: 1px 2px 2px 2px;
 }}
 QLabel#hint {{
     color: {muted};
-    font-size: 11px;
+    font-size: 12px;
 }}
 QLabel {{ background: transparent; }}
 QLabel#fieldLabel {{
     color: {muted};
     font-size: 12px;
+    font-weight: 600;
 }}
 QFrame#divider {{
     background-color: {border};
@@ -102,8 +120,9 @@ QFrame#divider {{
 QComboBox, QSpinBox, QLineEdit {{
     background-color: {card};
     border: 1px solid {border_strong};
-    border-radius: 6px;
-    padding: 2px 6px;
+    border-radius: 7px;
+    padding: 2px 5px;
+    font-size: 12px;
     min-height: {input_h}px;
     max-height: {input_h}px;
     color: {text};
@@ -130,8 +149,9 @@ QComboBox QAbstractItemView {{
 QPushButton {{
     background-color: {card};
     border: 1px solid {border_strong};
-    border-radius: 6px;
-    padding: 3px 10px;
+    border-radius: 8px;
+    padding: 3px 12px;
+    font-weight: 600;
     min-height: {input_h}px;
     color: {text};
 }}
@@ -146,6 +166,49 @@ QPushButton#primary {{
     font-weight: 600;
 }}
 QPushButton#primary:hover {{ background-color: {accent_hover}; border-color: {accent_hover}; }}
+QPushButton#primary:disabled {{ background-color: #9db7f5; border-color: #9db7f5; color: #eef3ff; }}
+
+QPushButton#danger {{
+    background-color: {red_soft};
+    border: 1px solid {red_border};
+    color: {red};
+}}
+QPushButton#danger:hover {{ background-color: #fbdcd8; }}
+
+QPushButton#go {{
+    background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #1f9d5c, stop:1 {green});
+    border: 1px solid {green};
+    border-radius: 10px;
+    color: #ffffff;
+    font-size: 15px;
+    font-weight: 800;
+    padding: 10px 8px;
+}}
+QPushButton#go:hover {{ background-color: #12844c; }}
+QPushButton#go:disabled {{ background-color: #9fcfb5; border-color: #9fcfb5; }}
+
+/* Sekme gezintisi: iki satırlık hap düğmeler (yazılar asla kesilmez) */
+QFrame#navBar {{
+    background-color: #e2e7f1;
+    border: 1px solid {border};
+    border-radius: 11px;
+}}
+QPushButton#navButton {{
+    background-color: transparent;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    color: {muted};
+    font-size: 12px;
+    font-weight: 700;
+    padding: 5px 2px;
+    min-height: 22px;
+}}
+QPushButton#navButton:hover {{ background-color: #f4f6fb; color: {text}; }}
+QPushButton#navButton:checked {{
+    background-color: {card};
+    border: 1px solid {border_strong};
+    color: {accent};
+}}
 
 QPushButton#ghost {{
     background-color: transparent;
@@ -158,32 +221,36 @@ QPushButton#ghost:hover {{ background-color: {card_alt}; color: {text}; }}
 QPushButton#iconButton {{
     background-color: {card};
     border: 1px solid {border_strong};
-    border-radius: 6px;
+    border-radius: 12px;
     padding: 0;
     color: {muted};
-    font-size: 13px;
+    font-size: 16px;
 }}
 QPushButton#iconButton:hover {{ color: {text}; border-color: {faint}; }}
 
 /* Master: en üstteki ana anahtar, tek DOLU renk alan */
 QPushButton#masterOn {{
-    background-color: {green};
+    background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #1fa463, stop:1 {green});
     border: 1px solid {green};
-    border-radius: 8px;
+    border-radius: 12px;
     color: #ffffff;
-    font-size: 13px;
-    font-weight: 700;
-    padding: 9px 8px;
+    font-size: 15px;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    padding: 12px 8px;
 }}
+QPushButton#masterOn:hover {{ background-color: #12844c; }}
 QPushButton#masterOff {{
-    background-color: {red};
+    background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #de4a43, stop:1 {red});
     border: 1px solid {red};
-    border-radius: 8px;
+    border-radius: 12px;
     color: #ffffff;
-    font-size: 13px;
-    font-weight: 700;
-    padding: 9px 8px;
+    font-size: 15px;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    padding: 12px 8px;
 }}
+QPushButton#masterOff:hover {{ background-color: #b02a25; }}
 
 /* Modül anahtarı: master'ın SOLGUN kardeşi (alt seviye olduğu belli) */
 QPushButton#moduleOn {{
@@ -208,10 +275,10 @@ QPushButton#moduleError {{
 }}
 
 /* --------------------------------------------------------------- tikler */
-QCheckBox {{ spacing: 6px; color: {text}; }}
+QCheckBox {{ spacing: 6px; color: {text}; background: transparent; }}
 QCheckBox::indicator {{
-    width: 15px;
-    height: 15px;
+    width: 16px;
+    height: 16px;
     border: 1px solid {border_strong};
     border-radius: 4px;
     background-color: {card};
@@ -220,6 +287,7 @@ QCheckBox::indicator:hover {{ border-color: {accent}; }}
 QCheckBox::indicator:checked {{
     background-color: {accent};
     border-color: {accent};
+    image: url("{check_svg}");
 }}
 QCheckBox:disabled {{ color: {faint}; }}
 
@@ -300,7 +368,7 @@ QMessageBox, QInputDialog {{ background-color: {card}; }}
     text=TEXT, muted=MUTED, faint=FAINT, accent=ACCENT, accent_hover=ACCENT_HOVER,
     accent_soft=ACCENT_SOFT, green=GREEN, green_soft=GREEN_SOFT,
     green_border=GREEN_BORDER, red=RED, red_soft=RED_SOFT, red_border=RED_BORDER,
-    font=FONT, input_h=INPUT_HEIGHT,
+    font=FONT, input_h=INPUT_HEIGHT, check_svg=CHECK_SVG,
 )
 
 

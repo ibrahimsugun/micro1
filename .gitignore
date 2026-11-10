@@ -19,3 +19,7 @@ _yakalama/
 *.swp
 Thumbs.db
 desktop.ini
+
+# Hızlı giriş hesabı (şifre DPAPI ile şifreli olsa da depoya girmesin)
+hizli_giris.json
+hizli_giris.json.tmp

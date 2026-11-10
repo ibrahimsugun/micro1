@@ -226,6 +226,35 @@ class InputService:
         pyautogui.keyUp(pag_key)
         return True
 
+    # -------------------------------------------------- ham tarama kodu (giriş)
+    def exclusive(self):
+        """Uzun bir diziyi (hızlı giriş) bölünmeden göndermek için kilit.
+
+        Modül thread'leri bu sürede tuş gönderemez; giriş alanına araya
+        '1' gibi bir skill tuşu karışmaz.
+        """
+        return self._lock
+
+    def key_event_locked(self, scan: int, vk: int, up: bool,
+                         extended: bool = False) -> bool:
+        """Tek bir tuş olayı (bas YA DA bırak). Kilit ÇAĞIRANDA olmalı."""
+        if self.using_interception:
+            state = (interception_key_state.INTERCEPTION_KEY_UP.value if up
+                     else interception_key_state.INTERCEPTION_KEY_DOWN.value)
+            if extended:
+                state |= interception_key_state.INTERCEPTION_KEY_E0.value
+            self._driver.send(self._keyboard, key_stroke(int(scan), state, 0))
+            return True
+        if WIN32_AVAILABLE:
+            flags = 0
+            if extended:
+                flags |= win32con.KEYEVENTF_EXTENDEDKEY
+            if up:
+                flags |= win32con.KEYEVENTF_KEYUP
+            win32api.keybd_event(int(vk) & 0xFF, int(scan) & 0xFF, flags, 0)
+            return True
+        return False
+
     # -------------------------------------------------- serbest tuşlar (tıklayıcı)
     # pynput adları -> pyautogui adları (yalnız farklı olanlar)
     RAW_KEY_ALIASES = {

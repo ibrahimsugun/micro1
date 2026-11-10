@@ -49,6 +49,7 @@ class PotRowWidget(QWidget):
             # (Genişlik sabitten alınır; buraya kutu KOYULMAZ.)
             spacer = QWidget(self)
             spacer.setFixedWidth(PAGE_W)
+            spacer.setStyleSheet("background: transparent;")
             row.addWidget(spacer)
 
         self.check.toggled.connect(lambda _: self.changed.emit())
